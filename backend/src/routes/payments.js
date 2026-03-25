@@ -60,7 +60,7 @@ router.post("/create-payment", async (req, res, next) => {
 
     const payload = {
       id: paymentId,
-      merchant_id: req.body.merchant_id || null,
+      merchant_id: req.merchant.id,
       amount: Number(req.body.amount),
       asset,
       asset_issuer: assetIssuer,
