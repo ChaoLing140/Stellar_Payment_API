@@ -93,7 +93,7 @@ export default function PaymentDetailModal({ paymentId, isOpen, onClose }: Payme
   const [actionError, setActionError] = useState<string | null>(null);
   const [freighterReady, setFreighterReady] = useState(false);
 
-  const { isProcessing, status: txStatus, error: paymentError, processPayment } = usePayment();
+  const { isProcessing, error: paymentError, processPayment } = usePayment();
 
   // Fetch payment details
   useEffect(() => {
