@@ -82,91 +82,89 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/create-payment:
-   * post:
-   * summary: Create a new payment session request
-   * tags: [Payments]
-   * parameters:
-   * - in: header
-   * name: Idempotency-Key
-   * schema:
-   * type: string
-   * description: Optional unique key for idempotent requests. Use UUID or request ID. Responses are cached for 24 hours.
-   * requestBody:
-   * required: true
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * required: [amount, asset, recipient]
-   * properties:
-   * amount:
-   * type: number
-   * description: Payment amount (must be positive and at least 0.01 XLM for native payments)
-   * asset:
-   * type: string
-   * description: Asset code (e.g. XLM, USDC)
-   * asset_issuer:
-   * type: string
-   * description: Asset issuer (required for non-native assets)
-   * recipient:
-   * type: string
-   * description: Stellar address of the recipient
-   * merchant_id:
-   * type: string
-   * description:
-   * type: string
-   * memo:
-   * type: string
-   * memo_type:
-   * type: string
-   * enum: [text, id, hash, return]
-   * webhook_url:
-   * type: string
-   * branding_overrides:
-   * type: object
-   * properties:
-   * primary_color:
-   * type: string
-   * example: "#5ef2c0"
-   * secondary_color:
-   * type: string
-   * example: "#b8ffe2"
-   * background_color:
-   * type: string
-   * example: "#050608"
-   * responses:
-   * 201:
-   * description: Payment created
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * payment_id:
-   * type: string
-   * payment_link:
-   * type: string
-   * status:
-   * type: string
-   * branding_config:
-   * type: object
-   * 200:
-   * description: Duplicate request — cached response returned from idempotency key
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * payment_id:
-   * type: string
-   * payment_link:
-   * type: string
-   * status:
-   * type: string
-   * 400:
-   * description: Validation error or invalid Idempotency-Key
-   * 429:
-   * description: Too many requests
+   *   post:
+   *     summary: Create a new payment session request
+   *     tags: [Payments]
+   *     parameters:
+   *       - in: header
+   *         name: Idempotency-Key
+   *         schema:
+   *           type: string
+   *         description: Optional unique key for idempotent requests. Use UUID or request ID. Responses are cached for 24 hours.
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [amount, asset, recipient]
+   *             properties:
+   *               amount:
+   *                 type: number
+   *                 description: Payment amount (must be positive and at least 0.01 XLM for native payments)
+   *               asset:
+   *                 type: string
+   *                 description: Asset code (e.g. XLM, USDC)
+   *               asset_issuer:
+   *                 type: string
+   *                 description: Asset issuer (required for non-native assets)
+   *               recipient:
+   *                 type: string
+   *                 description: Stellar address of the recipient
+   *               description:
+   *                 type: string
+   *               memo:
+   *                 type: string
+   *               memo_type:
+   *                 type: string
+   *                 enum: [text, id, hash, return]
+   *               webhook_url:
+   *                 type: string
+   *               branding_overrides:
+   *                 type: object
+   *                 properties:
+   *                   primary_color:
+   *                     type: string
+   *                     example: "#5ef2c0"
+   *                   secondary_color:
+   *                     type: string
+   *                     example: "#b8ffe2"
+   *                   background_color:
+   *                     type: string
+   *                     example: "#050608"
+   *     responses:
+   *       201:
+   *         description: Payment created
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 payment_id:
+   *                   type: string
+   *                 payment_link:
+   *                   type: string
+   *                 status:
+   *                   type: string
+   *                 branding_config:
+   *                   type: object
+   *       200:
+   *         description: Duplicate request — cached response returned from idempotency key
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 payment_id:
+   *                   type: string
+   *                 payment_link:
+   *                   type: string
+   *                 status:
+   *                   type: string
+   *       400:
+   *         description: Validation error or invalid Idempotency-Key
+   *       429:
+   *         description: Too many requests
    */
   async function createSession(req, res, next) {
     try {
@@ -271,28 +269,28 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/payment-status/{id}:
-   * get:
-   * summary: Get the status of a payment
-   * tags: [Payments]
-   * parameters:
-   * - in: path
-   * name: id
-   * required: true
-   * schema:
-   * type: string
-   * description: Payment ID
-   * responses:
-   * 200:
-   * description: Payment details
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * payment:
-   * type: object
-   * 404:
-   * description: Payment not found
+   *   get:
+   *     summary: Get the status of a payment
+   *     tags: [Payments]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Payment ID
+   *     responses:
+   *       200:
+   *         description: Payment details
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 payment:
+   *                   type: object
+   *       404:
+   *         description: Payment not found
    */
   router.get(
     "/payment-status/:id",
@@ -353,33 +351,6 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/verify-payment/{id}:
-   * post:
-   * summary: Verify a payment on the Stellar network
-   * tags: [Payments]
-   * parameters:
-   * - in: path
-   * name: id
-   * required: true
-   * schema:
-   * type: string
-   * description: Payment ID
-   * responses:
-   * 200:
-   * description: Verification result
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * status:
-   * type: string
-   * enum: [pending, confirmed]
-   * tx_id:
-   * type: string
-   * webhook:
-   * type: object
-   * 404:
-   * description: Payment not found
    *   post:
    *     summary: Verify a payment on the Stellar network
    *     tags: [Payments]
@@ -459,6 +430,11 @@ function createPaymentsRouter({
           return res.json({ status: "pending" });
         }
 
+        // Calculate latency from creation to confirmation
+        const createdAt = new Date(data.created_at);
+        const now = new Date();
+        const latencySeconds = (now - createdAt) / 1000;
+
         const { error: updateError } = await supabase
           .from("payments")
           .update({
@@ -478,11 +454,6 @@ function createPaymentsRouter({
         await invalidatePaymentCache(redis, data.id);
         // Record metrics for confirmation
         paymentConfirmedCounter.inc({ asset: data.asset });
-
-        // Calculate latency from creation to confirmation
-        const createdAt = new Date(data.created_at);
-        const now = new Date();
-        const latencySeconds = (now - createdAt) / 1000;
         paymentConfirmationLatency.observe({ asset: data.asset }, latencySeconds);
 
         // Emit real-time event to the merchant's private room (issue #229)
@@ -567,46 +538,46 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/payments:
-   * get:
-   * summary: Get paginated list of payments for the authenticated merchant
-   * tags: [Payments]
-   * security:
-   * - ApiKeyAuth: []
-   * parameters:
-   * - in: query
-   * name: page
-   * schema:
-   * type: integer
-   * default: 1
-   * description: Page number (1-indexed)
-   * - in: query
-   * name: limit
-   * schema:
-   * type: integer
-   * default: 10
-   * description: Number of results per page (max 100)
-   * responses:
-   * 200:
-   * description: Paginated payments
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * payments:
-   * type: array
-   * items:
-   * type: object
-   * total_count:
-   * type: integer
-   * total_pages:
-   * type: integer
-   * page:
-   * type: integer
-   * limit:
-   * type: integer
-   * 401:
-   * description: Missing or invalid API key
+   *   get:
+   *     summary: Get paginated list of payments for the authenticated merchant
+   *     tags: [Payments]
+   *     security:
+   *       - ApiKeyAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           default: 1
+   *         description: Page number (1-indexed)
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           default: 10
+   *         description: Number of results per page (max 100)
+   *     responses:
+   *       200:
+   *         description: Paginated payments
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 payments:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                 total_count:
+   *                   type: integer
+   *                 total_pages:
+   *                   type: integer
+   *                 page:
+   *                   type: integer
+   *                 limit:
+   *                   type: integer
+   *       401:
+   *         description: Missing or invalid API key
    */
   router.get("/payments", validateRequest({ query: paginationQuerySchema }), async (req, res, next) => {
     try {
@@ -664,41 +635,41 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/metrics/7day:
-   * get:
-   * summary: Get 7-day rolling payment volume metrics
-   * tags: [Metrics]
-   * security:
-   * - ApiKeyAuth: []
-   * responses:
-   * 200:
-   * description: Daily volume data for past 7 days
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * data:
-   * type: array
-   * items:
-   * type: object
-   * properties:
-   * date:
-   * type: string
-   * description: Date in YYYY-MM-DD format
-   * volume:
-   * type: number
-   * description: Total payment amount for that day
-   * count:
-   * type: integer
-   * description: Number of payments on that day
-   * total_volume:
-   * type: number
-   * description: Total volume across all 7 days
-   * total_payments:
-   * type: integer
-   * description: Total payment count across all 7 days
-   * 401:
-   * description: Missing or invalid API key
+   *   get:
+   *     summary: Get 7-day rolling payment volume metrics
+   *     tags: [Metrics]
+   *     security:
+   *       - ApiKeyAuth: []
+   *     responses:
+   *       200:
+   *         description: Daily volume data for past 7 days
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       date:
+   *                         type: string
+   *                         description: Date in YYYY-MM-DD format
+   *                       volume:
+   *                         type: number
+   *                         description: Total payment amount for that day
+   *                       count:
+   *                         type: integer
+   *                         description: Number of payments on that day
+   *                 total_volume:
+   *                   type: number
+   *                   description: Total volume across all 7 days
+   *                 total_payments:
+   *                   type: integer
+   *                   description: Total payment count across all 7 days
+   *       401:
+   *         description: Missing or invalid API key
    */
   router.get("/metrics/7day", async (req, res, next) => {
     try {
@@ -768,38 +739,38 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/payments/{id}/refund:
-   * post:
-   * summary: Generate a refund transaction for a confirmed payment
-   * tags: [Payments]
-   * security:
-   * - ApiKeyAuth: []
-   * parameters:
-   * - in: path
-   * name: id
-   * required: true
-   * schema:
-   * type: string
-   * description: Payment ID
-   * responses:
-   * 200:
-   * description: Refund transaction XDR
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * xdr:
-   * type: string
-   * description: Transaction XDR to sign and submit
-   * hash:
-   * type: string
-   * description: Transaction hash
-   * instructions:
-   * type: string
-   * 400:
-   * description: Payment not eligible for refund
-   * 404:
-   * description: Payment not found
+   *   post:
+   *     summary: Generate a refund transaction for a confirmed payment
+   *     tags: [Payments]
+   *     security:
+   *       - ApiKeyAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Payment ID
+   *     responses:
+   *       200:
+   *         description: Refund transaction XDR
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 xdr:
+   *                   type: string
+   *                   description: Transaction XDR to sign and submit
+   *                 hash:
+   *                   type: string
+   *                   description: Transaction hash
+   *                 instructions:
+   *                   type: string
+   *       400:
+   *         description: Payment not eligible for refund
+   *       404:
+   *         description: Payment not found
    */
   router.post(
     "/payments/:id/refund",
@@ -889,34 +860,34 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/payments/{id}/refund/confirm:
-   * post:
-   * summary: Confirm a refund transaction has been submitted
-   * tags: [Payments]
-   * security:
-   * - ApiKeyAuth: []
-   * parameters:
-   * - in: path
-   * name: id
-   * required: true
-   * schema:
-   * type: string
-   * description: Payment ID
-   * requestBody:
-   * required: true
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * required: [tx_hash]
-   * properties:
-   * tx_hash:
-   * type: string
-   * description: Submitted refund transaction hash
-   * responses:
-   * 200:
-   * description: Refund confirmed
-   * 404:
-   * description: Payment not found
+   *   post:
+   *     summary: Confirm a refund transaction has been submitted
+   *     tags: [Payments]
+   *     security:
+   *       - ApiKeyAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Payment ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [tx_hash]
+   *             properties:
+   *               tx_hash:
+   *                 type: string
+   *                 description: Submitted refund transaction hash
+   *     responses:
+   *       200:
+   *         description: Refund confirmed
+   *       404:
+   *         description: Payment not found
    */
   router.post(
     "/payments/:id/refund/confirm",
@@ -968,66 +939,63 @@ function createPaymentsRouter({
   /**
    * @swagger
    * /api/anchor/sep24/deposit:
-   * post:
-   * summary: Initiate a SEP-0024 hosted deposit (fiat → Stellar token)
-   * description: >
-   * Starts an interactive deposit flow with a Stellar anchor (e.g. Circle,
-   * MoneyGram). Returns a URL the frontend should open in a popup — the anchor
-   * hosts the deposit form, so no bank details are ever sent to this API.
-   * tags: [Anchor / SEP-0024]
-   * security:
-   * - ApiKeyAuth: []
-   * requestBody:
-   * required: true
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * required: [asset_code, account]
-   * properties:
-   * asset_code:
-   * type: string
-   * description: Stellar asset code to deposit (e.g. USDC, EURC)
-   * example: USDC
-   * account:
-   * type: string
-   * description: User's Stellar public key that will receive the tokens
-   * amount:
-   * type: number
-   * description: Optional pre-fill amount for the deposit form
-   * anchor_domain:
-   * type: string
-   * description: Anchor domain override (defaults to ANCHOR_DOMAIN env var)
-   * example: testanchor.stellar.org
-   * responses:
-   * 200:
-   * description: Interactive deposit URL from the anchor
-   * content:
-   * application/json:
-   * schema:
-   * type: object
-   * properties:
-   * type:
-   * type: string
-   * example: interactive_customer_info_needed
-   * url:
-   * type: string
-   * description: Open this URL in a popup for the user to complete the deposit
-   * id:
-   * type: string
-   * description: Anchor transaction ID — use this to poll /anchor/sep24/transaction/:id
-   * anchor_domain:
-   * type: string
-   * 400:
-   * description: Missing required fields
-   * 500:
-   * description: ANCHOR_DOMAIN not configured
-   * 502:
-   * description: Anchor request failed
-   * /api/path-payment-quote/{id}:
-   *   get:
-   *     summary: Get a path payment quote for a payment session
-   *     description: Returns the estimated send amount if the customer wants to pay with a different asset than the merchant expects.
+   *   post:
+   *     summary: Initiate a SEP-0024 hosted deposit (fiat → Stellar token)
+   *     description: >
+   *       Starts an interactive deposit flow with a Stellar anchor (e.g. Circle,
+   *       MoneyGram). Returns a URL the frontend should open in a popup — the anchor
+   *       hosts the deposit form, so no bank details are ever sent to this API.
+   *     tags: [Anchor / SEP-0024]
+   *     security:
+   *       - ApiKeyAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [asset_code, account]
+   *             properties:
+   *               asset_code:
+   *                 type: string
+   *                 description: Stellar asset code to deposit (e.g. USDC, EURC)
+   *                 example: USDC
+   *               account:
+   *                 type: string
+   *                 description: User's Stellar public key that will receive the tokens
+   *               amount:
+   *                 type: number
+   *                 description: Optional pre-fill amount for the deposit form
+   *               anchor_domain:
+   *                 type: string
+   *                 description: Anchor domain override (defaults to ANCHOR_DOMAIN env var)
+   *                 example: testanchor.stellar.org
+   *     responses:
+   *       200:
+   *         description: Interactive deposit URL from the anchor
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 type:
+   *                   type: string
+   *                   example: interactive_customer_info_needed
+   *                 url:
+   *                   type: string
+   *                   description: Open this URL in a popup for the user to complete the deposit
+   *                 id:
+   *                   type: string
+   *                   description: Anchor transaction ID — use this to poll /anchor/sep24/transaction/:id
+   *                 anchor_domain:
+   *                   type: string
+   *       400:
+   *         description: Missing required fields
+   *       500:
+   *         description: ANCHOR_DOMAIN not configured
+   *       502:
+   *         description: Anchor request failed
+   */
    *     tags: [Payments]
    *     parameters:
    *       - in: path
@@ -1082,6 +1050,11 @@ function createPaymentsRouter({
         const { data, error } = await query
           .eq("id", req.params.id)
           .maybeSingle();
+
+        if (error) {
+          error.status = 500;
+          throw error;
+        }
 
         if (!data) {
           return res.status(404).json({ error: "Payment not found" });
