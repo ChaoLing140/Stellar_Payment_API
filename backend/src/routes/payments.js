@@ -15,6 +15,8 @@ import {
 } from "../lib/request-schemas.js";
 import { createCreatePaymentRateLimit } from "../lib/create-payment-rate-limit.js";
 import { sendWebhook } from "../lib/webhooks.js";
+import { sendReceiptEmail } from "../lib/email.js";
+import { renderReceiptEmail } from "../lib/email-templates.js";
 import { resolveBrandingConfig } from "../lib/branding.js";
 import { getPayloadForVersion } from "../webhooks/resolver.js";
 import {
@@ -338,7 +340,7 @@ function createPaymentsRouter({
         let query = supabase
           .from("payments")
           .select(
-  "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, merchants(webhook_secret, webhook_version)"
+  "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, merchants(webhook_secret, webhook_version, notification_email, email)"
 );
 
         if (req.merchant?.id) {
@@ -436,6 +438,33 @@ const webhookResult = await sendWebhook(
 
         if (!webhookResult.ok && !webhookResult.skipped) {
           console.warn("Webhook failed", webhookResult);
+        }
+
+        // Fire-and-forget receipt email — must not block the response
+        const receiptTo =
+          data.merchants?.notification_email || data.merchants?.email;
+
+        if (receiptTo) {
+          const receiptHtml = renderReceiptEmail({
+            payment: { ...data, tx_id: match.transaction_hash },
+            merchant: data.merchants,
+          });
+          Promise.resolve()
+            .then(() =>
+              sendReceiptEmail({
+                to: receiptTo,
+                subject: `Payment Receipt – ${data.id}`,
+                html: receiptHtml,
+              })
+            )
+            .then((result) => {
+              if (!result.ok) {
+                console.warn("Receipt email failed", result.error);
+              }
+            })
+            .catch((err) => {
+              console.warn("Receipt email error", err);
+            });
         }
 
         res.json({
