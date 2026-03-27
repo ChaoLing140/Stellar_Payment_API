@@ -10,6 +10,7 @@
   },
   "nav": {
     "home": "Inicio",
+    "docs": "Docs",
     "login": "Iniciar sesion",
     "register": "Registrarse",
     "toggleMenu": "Abrir menu"

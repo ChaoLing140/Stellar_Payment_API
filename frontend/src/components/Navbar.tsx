@@ -30,6 +30,7 @@ export default function Navbar() {
 
   const appNavLinks: AppNavLink[] = [
     { href: "/", label: t("home") },
+    { href: "/docs", label: t("docs") },
     { href: "/login", label: t("login") },
     { href: "/register", label: t("register") },
   ];

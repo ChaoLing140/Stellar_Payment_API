@@ -10,6 +10,7 @@
   },
   "nav": {
     "home": "Home",
+    "docs": "Docs",
     "login": "Login",
     "register": "Register",
     "toggleMenu": "Toggle menu"
