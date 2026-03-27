@@ -123,6 +123,7 @@ app.use("/api/merchant-profile", requireApiKeyAuth());
 app.use("/api/merchant-limits", requireApiKeyAuth());
 app.use("/api/test-webhook", requireApiKeyAuth());
 app.use("/api/audit-logs", requireApiKeyAuth());
+app.use("/api/merchants/rotate-webhook-secret", requireApiKeyAuth());
 app.use("/api", authRouter);
 app.use("/api", createPaymentsRouter({ verifyPaymentRateLimit }));
 app.use("/api", merchantsRouter);
