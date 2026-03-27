@@ -1,16 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import PaymentMetrics from "@/components/PaymentMetrics";
 import RecentPayments from "@/components/RecentPayments";
 import WithdrawalModal from "@/components/WithdrawalModal";
+import DashboardSkeleton from "@/components/DashboardSkeleton";
 import Link from "next/link";
+import { useMerchantHydrated, useHydrateMerchantStore } from "@/lib/merchant-store";
 
 export default function DashboardPage() {
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+  const hydrated = useMerchantHydrated();
+  const [loading, setLoading] = useState(true);
+
+  useHydrateMerchantStore();
+
+  useEffect(() => {
+    if (hydrated) {
+      // Give it a moment to show the skeleton before transitioning to content
+      // this avoids layout shifts between different loading states
+      const timer = setTimeout(() => setLoading(false), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [hydrated]);
+
+  if (!hydrated || loading) {
+    return <DashboardSkeleton />;
+  }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-10 animate-in fade-in duration-500">
       <header className="flex flex-col gap-4">
         <h1 className="text-4xl font-bold text-white">Merchant Overview</h1>
         <p className="max-w-2xl text-slate-400">
@@ -23,7 +42,7 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-10 lg:col-span-2">
           <section className="flex flex-col gap-4">
             <h2 className="text-xl font-semibold text-white">Payment Metrics</h2>
-            <PaymentMetrics />
+            <PaymentMetrics showSkeleton={loading} />
           </section>
 
           <section className="flex flex-col gap-4">
@@ -33,7 +52,7 @@ export default function DashboardPage() {
                 View all payments →
               </Link>
             </div>
-            <RecentPayments />
+            <RecentPayments showSkeleton={loading} />
           </section>
         </div>
 
