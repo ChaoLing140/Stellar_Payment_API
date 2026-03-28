@@ -1,4 +1,10 @@
 import pg from 'pg';
+import {
+  pgPoolTotalConnections,
+  pgPoolIdleConnections,
+  pgPoolWaitingRequests,
+  pgPoolUtilizationPercent,
+} from './metrics.js';
 
 const { Pool } = pg;
 
@@ -44,6 +50,21 @@ export function getPoolStats() {
 }
 
 /**
+ * Update Prometheus metrics with current pool statistics.
+ */
+function updatePoolMetrics() {
+  const stats = getPoolStats();
+  pgPoolTotalConnections.set(stats.totalConnections);
+  pgPoolIdleConnections.set(stats.idleConnections);
+  pgPoolWaitingRequests.set(stats.waitingRequests);
+  
+  const utilizationPercent = (
+    (stats.totalConnections - stats.idleConnections) / stats.maxConnections * 100
+  );
+  pgPoolUtilizationPercent.set(parseFloat(utilizationPercent.toFixed(2)));
+}
+
+/**
  * Log pool statistics at regular intervals for monitoring.
  * Call this during application startup to enable periodic logging.
  */
@@ -55,6 +76,9 @@ export function startPoolMonitoring(intervalMs = 60_000) {
       ...stats,
       utilizationPercent: ((stats.totalConnections - stats.idleConnections) / stats.maxConnections * 100).toFixed(2),
     });
+    
+    // Update Prometheus metrics
+    updatePoolMetrics();
   }, intervalMs);
 
   return () => clearInterval(interval);
