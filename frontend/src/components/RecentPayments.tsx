@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
+import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import PaymentDetailModal from "@/components/PaymentDetailModal";
 import ExportCsvButton from "@/components/ExportCsvButton";
@@ -14,6 +14,7 @@ import {
   useMerchantId,
 } from "@/lib/merchant-store";
 import { usePaymentSocket } from "@/lib/usePaymentSocket";
+import { convertToCSV, downloadCSV } from "@/utils/csv";
 
 interface Payment {
   id: string;
@@ -106,6 +107,7 @@ export default function RecentPayments({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const page = 1;
   const [totalCount, setTotalCount] = useState(0);
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -151,6 +153,7 @@ export default function RecentPayments({
       tx_id: string;
       confirmed_at: string;
     }) => {
+      // Update the row status in-place without a full refetch
       setPayments((prev) =>
         prev.map((payment) =>
           payment.id === event.id ? { ...payment, status: "confirmed" } : payment,
@@ -175,6 +178,9 @@ export default function RecentPayments({
 
     async function fetchPayments() {
       try {
+        setLoading(true);
+        setError(null);
+
         if (!apiKey) {
           setError(t("missingApiKey"));
           setPayments([]);
@@ -183,12 +189,9 @@ export default function RecentPayments({
           return;
         }
 
-        setLoading(true);
-        setError(null);
-
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
         const params = buildSearchParams(filters);
-        params.set("page", "1");
+        params.set("page", page.toString());
         params.set("limit", LIMIT.toString());
 
         const response = await fetch(`${apiUrl}/api/payments?${params.toString()}`, {
@@ -225,6 +228,25 @@ export default function RecentPayments({
     setIsModalOpen(true);
   };
 
+  const handleDownloadCSV = () => {
+    if (!payments.length) return;
+
+    const mapped = payments.map((p) => ({
+      ID: p.id,
+      Amount: `${p.amount.toLocaleString()} ${p.asset}`,
+      Status: p.status.charAt(0).toUpperCase() + p.status.slice(1),
+      Description: p.description ?? "",
+      Date: new Date(p.created_at).toLocaleString(),
+    }));
+
+    const csv = convertToCSV(mapped);
+    if (!csv) return;
+
+    const filename = `payments_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+
+    downloadCSV(csv, filename);
+  };
+
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedPayment(null);
@@ -232,31 +254,95 @@ export default function RecentPayments({
 
   if (showSkeleton || loading) {
     return (
-      <SkeletonTheme baseColor="#1e293b" highlightColor="#334155">
-        <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Skeleton width={60} height={14} borderRadius={4} />
-                <Skeleton height={40} borderRadius={12} />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[...Array(4)].map((_, index) => (
-                  <div key={index} className="flex flex-col gap-2">
-                    <Skeleton width={60} height={14} borderRadius={4} />
-                    <Skeleton height={40} borderRadius={12} />
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-8 text-center">
+        {/* Error State Illustration */}
+        <div className="mx-auto mb-6 w-24 h-24 relative">
+          <div className="absolute inset-0 bg-yellow-500/10 rounded-full blur-xl animate-pulse" />
+          <div className="relative w-full h-full flex items-center justify-center">
+            <svg
+              className="w-12 h-12 text-yellow-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.502 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-white">
+              Connection Error
+            </h3>
+
+            <p className="text-sm text-yellow-400">{error}</p>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Make sure the backend is running and the payments endpoint is
+              available.
+            </p>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-white/10">
-            <div className="border-b border-white/10 bg-white/5 px-4 py-3">
-              <div className="flex justify-between">
-                {[...Array(5)].map((_, index) => (
-                  <Skeleton key={index} width={80} height={14} borderRadius={4} />
-                ))}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center gap-2 rounded-lg bg-yellow-500/20 border border-yellow-500/30 px-4 py-2 text-sm font-medium text-yellow-400 transition-all hover:bg-yellow-500/30"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Retry Connection
+            </button>
+
+            <button
+              onClick={() => window.open("https://webhook.site", "_blank")}
+              className="inline-flex items-center gap-2 rounded-lg border border-mint/30 bg-mint/5 px-4 py-2 text-sm font-medium text-mint transition-all hover:bg-mint/10"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+              Test Webhook Anyway
+            </button>
+          </div>
+
+          <div className="mt-4 p-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5">
+            <div className="flex items-start gap-3">
+              <div className="w-2 h-2 rounded-full bg-yellow-400 mt-1.5 flex-shrink-0" />
+              <div className="text-left">
+                <p className="text-xs font-medium text-yellow-400">
+                  Troubleshooting Tip
+                </p>
+            
+                <p className="text-xs text-slate-500">
+                  You can still test webhook functionality while backend
+                  services are being restored.
+                </p>
               </div>
             </div>
             <div className="divide-y divide-white/5">
@@ -274,15 +360,105 @@ export default function RecentPayments({
             </div>
           </div>
         </div>
-      </SkeletonTheme>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-8 text-center">
-        <h3 className="text-lg font-semibold text-white">{t("connectionError")}</h3>
-        <p className="mt-2 text-sm text-yellow-400">{error}</p>
+      <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
+        {/* Empty State Illustration */}
+        <div className="mx-auto mb-6 w-24 h-24 relative">
+          <div className="absolute inset-0 bg-mint/10 rounded-full blur-xl" />
+          <div className="relative w-full h-full flex items-center justify-center">
+            <svg
+              className="w-12 h-12 text-mint/60"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-white">
+              No payments yet
+            </h3>
+            
+            <p className="text-sm text-slate-400 max-w-md mx-auto">
+              Start accepting payments by creating your first payment link or
+              testing webhooks to see transaction data flow. 
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button
+              onClick={() => window.open("/dashboard/create", "_self")}
+              className="group relative inline-flex items-center gap-2 rounded-lg bg-mint px-4 py-2 text-sm font-medium text-black transition-all hover:bg-glow"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              Create Payment Link
+              <div className="absolute inset-0 -z-10 bg-mint/20 opacity-0 blur-xl transition-opacity group-hover:opacity-100" />
+            </button>
+
+            <button
+              onClick={() => window.open("https://webhook.site", "_blank")}
+              className="inline-flex items-center gap-2 rounded-lg border border-mint/30 bg-mint/5 px-4 py-2 text-sm font-medium text-mint transition-all hover:bg-mint/10"
+            >
+             
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+              Send Test Webhook
+            </button>
+          </div>
+
+          <div className="mt-6 p-4 rounded-lg border border-slate-700/50 bg-slate-800/30">
+            <div className="flex items-start gap-3">
+              <div className="w-2 h-2 rounded-full bg-mint mt-1.5 flex-shrink-0" />
+              <div className="text-left space-y-1">
+                
+                <p className="text-xs font-medium text-mint">
+                  Getting Started Guide
+                </p>
+                <p className="text-xs text-slate-400">
+                  Use webhook tools to test payment notifications and see
+                  real-time data appear in this dashboard. 
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -296,7 +472,7 @@ export default function RecentPayments({
               htmlFor="search"
               className="text-xs font-medium uppercase tracking-wider text-slate-400"
             >
-              {t("search")}
+              Search
             </label>
             <div className="relative">
               <input
@@ -329,7 +505,7 @@ export default function RecentPayments({
                 htmlFor="status"
                 className="text-xs font-medium uppercase tracking-wider text-slate-400"
               >
-                {t("status")}
+                Status
               </label>
               <select
                 id="status"
@@ -339,7 +515,9 @@ export default function RecentPayments({
               >
                 {STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
-                    {status === "all" ? t("allStatuses") : toStatusLabel(t, status)}
+                    {status === "all"
+                      ? "All Statuses"
+                      : status.charAt(0).toUpperCase() + status.slice(1)}
                   </option>
                 ))}
               </select>
@@ -350,7 +528,7 @@ export default function RecentPayments({
                 htmlFor="asset"
                 className="text-xs font-medium uppercase tracking-wider text-slate-400"
               >
-                {t("asset")}
+                Asset
               </label>
               <select
                 id="asset"
@@ -371,7 +549,7 @@ export default function RecentPayments({
                 htmlFor="dateFrom"
                 className="text-xs font-medium uppercase tracking-wider text-slate-400"
               >
-                {t("fromDate")}
+                From Date
               </label>
               <input
                 id="dateFrom"
@@ -387,7 +565,7 @@ export default function RecentPayments({
                 htmlFor="dateTo"
                 className="text-xs font-medium uppercase tracking-wider text-slate-400"
               >
-                {t("toDate")}
+                To Date
               </label>
               <input
                 id="dateTo"
@@ -401,44 +579,127 @@ export default function RecentPayments({
 
           {hasActiveFilters && (
             <div className="flex flex-wrap items-center gap-2 pt-2">
-              <span className="text-xs text-slate-400">{t("activeFilters")}</span>
+              <span className="text-xs text-slate-400">Active filters:</span>
 
               {filters.search && (
-                <FilterChip
-                  label={t("searchChip", { value: filters.search })}
-                  onClear={() => clearFilter("search")}
-                  ariaLabel={t("clearSearchFilter")}
-                />
+                <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
+                  Search: &quot;{filters.search}&quot;
+                  <button
+                    onClick={() => clearFilter("search")}
+                    className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
+                    aria-label="Clear search filter"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </span>
               )}
               {filters.status !== "all" && (
-                <FilterChip
-                  label={t("statusChip", {
-                    value: toStatusLabel(t, filters.status),
-                  })}
-                  onClear={() => clearFilter("status")}
-                  ariaLabel={t("clearStatusFilter")}
-                />
+                <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
+                  Status: {filters.status}
+                  <button
+                    onClick={() => clearFilter("status")}
+                    className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
+                    aria-label="Clear status filter"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </span>
               )}
               {filters.asset !== "all" && (
-                <FilterChip
-                  label={t("assetChip", { value: filters.asset })}
-                  onClear={() => clearFilter("asset")}
-                  ariaLabel={t("clearAssetFilter")}
-                />
+                <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
+                  Asset: {filters.asset}
+                  <button
+                    onClick={() => clearFilter("asset")}
+                    className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
+                    aria-label="Clear asset filter"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </span>
               )}
               {filters.dateFrom && (
-                <FilterChip
-                  label={t("fromChip", { value: filters.dateFrom })}
-                  onClear={() => clearFilter("dateFrom")}
-                  ariaLabel={t("clearFromDateFilter")}
-                />
+                <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
+                  From: {filters.dateFrom}
+                  <button
+                    onClick={() => clearFilter("dateFrom")}
+                    className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
+                    aria-label="Clear from date filter"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </span>
               )}
               {filters.dateTo && (
-                <FilterChip
-                  label={t("toChip", { value: filters.dateTo })}
-                  onClear={() => clearFilter("dateTo")}
-                  ariaLabel={t("clearToDateFilter")}
-                />
+                <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
+                  To: {filters.dateTo}
+                  <button
+                    onClick={() => clearFilter("dateTo")}
+                    className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
+                    aria-label="Clear to date filter"
+                  >
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </span>
               )}
 
               <button
@@ -476,33 +737,40 @@ export default function RecentPayments({
         />
       </div>
 
-      {payments.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
-          <h3 className="text-lg font-semibold text-white">{t("emptyTitle")}</h3>
-          <p className="mt-2 text-sm text-slate-400">{t("emptyDescription")}</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-white/10">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-white/10 bg-white/5">
-                <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                  {t("tableStatus")}
-                </th>
-                <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                  {t("tableAmount")}
-                </th>
-                <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 sm:table-cell">
-                  {t("tableDescription")}
-                </th>
-                <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 md:table-cell">
-                  {t("tableDate")}
-                </th>
-                <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                  {t("tableLink")}
-                </th>
-              </tr>
-            </thead>
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold text-white">Recent Payments</h2>
+
+        <button
+          onClick={handleDownloadCSV}
+          disabled={!payments.length}
+          className="rounded-lg bg-mint px-4 py-2 text-sm font-medium text-black hover:bg-glow disabled:opacity-50"
+        >
+          Download CSV
+        </button>
+      </div>
+      {/* Table */}
+      <div className="overflow-x-auto rounded-xl border border-white/10">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-white/10 bg-white/5">
+              <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
+                Status
+              </th>
+              <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
+                Amount
+              </th>
+              <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 sm:table-cell">
+                Description
+              </th>
+              <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 md:table-cell">
+                Date
+              </th>
+              <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
+                Link
+              </th>
+            </tr>
+          </thead>
+
             <tbody className="divide-y divide-white/5">
               {payments.map((payment) => (
                 <tr
@@ -552,7 +820,6 @@ export default function RecentPayments({
             </tbody>
           </table>
         </div>
-      )}
 
       <PaymentDetailModal
         paymentId={selectedPayment}
@@ -560,30 +827,5 @@ export default function RecentPayments({
         onClose={closeModal}
       />
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  onClear,
-  ariaLabel,
-}: {
-  label: string;
-  onClear: () => void;
-  ariaLabel: string;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-      {label}
-      <button
-        onClick={onClear}
-        className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-        aria-label={ariaLabel}
-      >
-        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </span>
   );
 }

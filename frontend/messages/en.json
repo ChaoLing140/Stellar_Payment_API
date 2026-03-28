@@ -94,7 +94,9 @@
     "checkoutPreview": "Checkout preview",
     "payNow": "Pay now",
     "generating": "Generating...",
-    "generate": "Generate Payment Link"
+    "generate": "Generate Payment Link",
+    "rateLimitError": "You're creating links too quickly. Try again in {seconds} seconds.",
+    "retryWait": "Wait {seconds}s…"
   },
   "paymentMetrics": {
     "downloadImage": "Download Image",
@@ -116,6 +118,7 @@
     "showAsset": "Show {asset}",
     "hideAsset": "Hide {asset}",
     "noPayments": "No completed payments in this period.",
+    "weeklyAvgLabel": "7D Avg",
     "ranges": {
       "7D": "7 Days",
       "30D": "30 Days",
@@ -208,6 +211,11 @@
     "paymentSent": "Payment sent!",
     "paymentFailed": "Payment failed. Please try again.",
     "connectedVia": "Connected via {provider}",
+    "approximateCostLabel": "Approximate cost in XLM",
+    "approximateCostHelp": "Estimated amount to deliver {amount} {asset} to the merchant.",
+    "slippageBuffer": "{percent}% safety buffer included. Max send: {sendMax} {asset}",
+    "pathPaymentTogglePrefix": "Pay with",
+    "pathPaymentToggleSuffix": "instead",
     "processing": "Processing...",
     "payWith": "Pay with {provider}",
     "payWithFallback": "Pay with Wallet",

@@ -94,7 +94,9 @@
     "checkoutPreview": "Vista previa del checkout",
     "payNow": "Pagar ahora",
     "generating": "Generando...",
-    "generate": "Generar enlace de pago"
+    "generate": "Generar enlace de pago",
+    "rateLimitError": "Estás creando enlaces demasiado rápido. Inténtalo de nuevo en {seconds} segundos.",
+    "retryWait": "Espera {seconds}s…"
   },
   "paymentMetrics": {
     "downloadImage": "Descargar imagen",
@@ -116,6 +118,7 @@
     "showAsset": "Mostrar {asset}",
     "hideAsset": "Ocultar {asset}",
     "noPayments": "No hay pagos completados en este periodo.",
+    "weeklyAvgLabel": "Prom. 7D",
     "ranges": {
       "7D": "7 dias",
       "30D": "30 dias",
@@ -208,6 +211,11 @@
     "paymentSent": "Pago enviado",
     "paymentFailed": "El pago fallo. Intentalo de nuevo.",
     "connectedVia": "Conectado mediante {provider}",
+    "approximateCostLabel": "Costo aproximado en XLM",
+    "approximateCostHelp": "Monto estimado para entregar {amount} {asset} al comercio.",
+    "slippageBuffer": "Incluye un margen de seguridad del {percent}%. Envio maximo: {sendMax} {asset}",
+    "pathPaymentTogglePrefix": "Pagar con",
+    "pathPaymentToggleSuffix": "en su lugar",
     "processing": "Procesando...",
     "payWith": "Pagar con {provider}",
     "payWithFallback": "Pagar con billetera",

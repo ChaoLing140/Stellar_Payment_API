@@ -37,7 +37,8 @@ describe("POST /api/merchants/rotate-webhook-secret", () => {
   });
 
   it("rotates secret with default 24h grace period", async () => {
-    const { default: router } = await import("./merchants.js");
+    const { default: createMerchantsRouter } = await import("./merchants.js");
+    const router = createMerchantsRouter();
     const handler = getRotateWebhookSecretHandler(router);
 
     const req = {
@@ -78,7 +79,8 @@ describe("POST /api/merchants/rotate-webhook-secret", () => {
   });
 
   it("uses request grace period override", async () => {
-    const { default: router } = await import("./merchants.js");
+    const { default: createMerchantsRouter } = await import("./merchants.js");
+    const router = createMerchantsRouter();
     const handler = getRotateWebhookSecretHandler(router);
 
     const req = {
