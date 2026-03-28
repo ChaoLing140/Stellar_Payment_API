@@ -221,6 +221,11 @@
     "payWithFallback": "Pagar com carteira",
     "receivedTitle": "Este pagamento foi recebido.",
     "receivedDescription": "A transacao foi confirmada na rede Stellar.",
+    "downloadReceipt": "Baixar recibo",
+    "downloadReceiptLoading": "Preparando recibo...",
+    "receiptDownloaded": "O download do recibo foi iniciado.",
+    "receiptDownloadFailed": "Nao foi possivel gerar o PDF do recibo.",
+    "receiptHashUnavailable": "Indisponivel",
     "failedTitle": "Este pagamento falhou.",
     "failedDescription": "Entre em contato com o lojista se voce acredita que isto e um erro.",
     "status": {

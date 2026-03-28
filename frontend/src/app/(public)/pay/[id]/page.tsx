@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useWallet } from "@/lib/wallet-context";
 import { usePayment } from "@/lib/usePayment";
 import { useAssetMetadata } from "@/lib/useAssetMetadata";
+import { createReceiptPdf } from "@/lib/receipt-pdf";
 import CopyButton from "@/components/CopyButton";
 import WalletSelector from "@/components/WalletSelector";
 import toast from "react-hot-toast";
@@ -314,6 +315,10 @@ function buildSep7Uri(payment: PaymentDetails) {
   return `web+stellar:pay?${params.toString()}`;
 }
 
+function buildReceiptFilename(paymentId: string) {
+  return `receipt-${paymentId.replace(/[^a-zA-Z0-9_-]/g, "-")}.pdf`;
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function LoadingSkeleton() {
@@ -367,6 +372,7 @@ export default function PaymentPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [showRawIntent, setShowRawIntent] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
 
   useEffect(() => {
     if (payment && (payment.status === "confirmed" || payment.status === "completed")) {
@@ -540,6 +546,49 @@ export default function PaymentPage() {
       const msg = paymentError ?? t("paymentFailed");
       setActionError(msg);
       toast.error(msg);
+    }
+  };
+
+  const handleDownloadReceipt = async () => {
+    if (!payment) return;
+
+    try {
+      setIsDownloadingReceipt(true);
+      setActionError(null);
+
+      const blob = createReceiptPdf({
+        merchantName: branding.merchant_name,
+        paymentId: payment.id,
+        amount: payment.amount.toLocaleString(locale, {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 7,
+        }),
+        asset: payment.asset.toUpperCase(),
+        status: t(`status.${payment.status.toLowerCase()}`),
+        date: new Date(payment.created_at).toLocaleString(locale, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }),
+        recipient: payment.recipient,
+        transactionHash: payment.tx_id ?? t("receiptHashUnavailable"),
+        description: payment.description,
+      });
+
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = buildReceiptFilename(payment.id);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      toast.success(t("receiptDownloaded"));
+    } catch {
+      const msg = t("receiptDownloadFailed");
+      setActionError(msg);
+      toast.error(msg);
+    } finally {
+      setIsDownloadingReceipt(false);
     }
   };
 
@@ -870,22 +919,35 @@ export default function PaymentPage() {
 
             {/* Settled success note */}
             {isSettled && (
-              <div
-                className="rounded-xl border p-4 text-center"
-                style={{
-                  borderColor: "var(--checkout-primary-border)",
-                  backgroundColor: "var(--checkout-primary-subtle)",
-                }}
-              >
-                <p
-                  className="text-sm font-semibold"
-                  style={{ color: "var(--checkout-primary)" }}
+              <div className="flex flex-col gap-3">
+                <div
+                  className="rounded-xl border p-4 text-center"
+                  style={{
+                    borderColor: "var(--checkout-primary-border)",
+                    backgroundColor: "var(--checkout-primary-subtle)",
+                  }}
                 >
-                  {t("receivedTitle")}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {t("receivedDescription")}
-                </p>
+                  <p
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--checkout-primary)" }}
+                  >
+                    {t("receivedTitle")}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {t("receivedDescription")}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadReceipt}
+                  disabled={isDownloadingReceipt}
+                  className="flex h-11 w-full items-center justify-center rounded-xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDownloadingReceipt
+                    ? t("downloadReceiptLoading")
+                    : t("downloadReceipt")}
+                </button>
               </div>
             )}
 

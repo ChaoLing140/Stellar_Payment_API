@@ -221,6 +221,11 @@
     "payWithFallback": "Pay with Wallet",
     "receivedTitle": "This payment has been received.",
     "receivedDescription": "The transaction was confirmed on the Stellar network.",
+    "downloadReceipt": "Download Receipt",
+    "downloadReceiptLoading": "Preparing Receipt...",
+    "receiptDownloaded": "Receipt download started.",
+    "receiptDownloadFailed": "Could not generate the receipt PDF.",
+    "receiptHashUnavailable": "Unavailable",
     "failedTitle": "This payment has failed.",
     "failedDescription": "Contact the merchant if you believe this is an error.",
     "status": {

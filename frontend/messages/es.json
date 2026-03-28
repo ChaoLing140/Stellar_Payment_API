@@ -221,6 +221,11 @@
     "payWithFallback": "Pagar con billetera",
     "receivedTitle": "Este pago ya fue recibido.",
     "receivedDescription": "La transaccion fue confirmada en la red Stellar.",
+    "downloadReceipt": "Descargar recibo",
+    "downloadReceiptLoading": "Preparando recibo...",
+    "receiptDownloaded": "La descarga del recibo ha comenzado.",
+    "receiptDownloadFailed": "No se pudo generar el PDF del recibo.",
+    "receiptHashUnavailable": "No disponible",
     "failedTitle": "Este pago ha fallado.",
     "failedDescription": "Contacta al comercio si crees que esto es un error.",
     "status": {
