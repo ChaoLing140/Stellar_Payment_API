@@ -388,7 +388,7 @@ function createPaymentsRouter({
         let query = supabase
           .from("payments")
           .select(
-            "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, merchants(webhook_secret, webhook_version, notification_email, email)"
+            "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, merchants(webhook_secret, webhook_version, webhook_custom_headers, notification_email, email)"
           );
 
         if (req.merchant?.id) {
@@ -494,7 +494,9 @@ function createPaymentsRouter({
         const webhookResult = await sendWebhook(
           data.webhook_url,
           webhookPayload,
-          merchantSecret
+          merchantSecret,
+          data.id,
+          data.merchants?.webhook_custom_headers ?? {}
         );
 
         if (!webhookResult.ok && !webhookResult.skipped) {

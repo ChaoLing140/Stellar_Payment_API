@@ -511,11 +511,16 @@ function createMerchantsRouter({
       try {
         const body = req.body;
 
+        const updatePayload = { webhook_url: body.webhook_url || null };
+        if ("custom_headers" in body) {
+          updatePayload.webhook_custom_headers = body.custom_headers ?? null;
+        }
+
         const { data, error } = await supabase
           .from("merchants")
-          .update({ webhook_url: body.webhook_url || null })
+          .update(updatePayload)
           .eq("id", req.merchant.id)
-          .select("webhook_url")
+          .select("webhook_url, webhook_custom_headers")
           .single();
 
         if (error) {
@@ -523,7 +528,10 @@ function createMerchantsRouter({
           throw error;
         }
 
-        res.json({ webhook_url: data.webhook_url || "" });
+        res.json({
+          webhook_url: data.webhook_url || "",
+          custom_headers: data.webhook_custom_headers ?? {},
+        });
       } catch (err) {
         next(err);
       }
