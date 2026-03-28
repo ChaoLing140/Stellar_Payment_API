@@ -18,7 +18,15 @@ export default defineConfig({
   },
   use: {
     baseURL: "http://127.0.0.1:3000",
+    locale: "en-US",
+    timezoneId: "UTC",
     trace: "on-first-retry",
+  },
+  webServer: {
+    command: "npm.cmd run dev -- --hostname 127.0.0.1 --port 3000",
+    url: "http://127.0.0.1:3000",
+    reuseExistingServer: true,
+    timeout: 120 * 1000,
   },
   projects: [
     {
@@ -35,11 +43,4 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    command:
-      "set NEXT_PUBLIC_E2E=1&& npm.cmd run dev -- --hostname 127.0.0.1 --port 3000",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: true,
-    timeout: 120 * 1000,
-  },
 });

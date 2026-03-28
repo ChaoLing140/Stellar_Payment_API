@@ -107,6 +107,91 @@ body {
   padding: 0.15rem 0.45rem;
 }
 
+/* Syntax highlighting for code blocks with rehype-prism-plus */
+.docs-prose pre {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(2, 6, 23, 0.82);
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+  margin: 1.25rem 0;
+}
+
+.docs-prose pre code {
+  border: 0;
+  background: transparent;
+  color: #e2e8f0;
+  padding: 0;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+/* prism-plus syntax highlighting tokens */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #7d8590;
+}
+
+.token.punctuation {
+  color: #e2e8f0;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #ffa657;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #7ee787;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #79c0ff;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #ff7b72;
+}
+
+.token.function,
+.token.class-name {
+  color: #d2a8ff;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #ffa657;
+}
+
+/* Line highlighting for code blocks */
+.docs-prose pre > code {
+  display: block;
+}
+
+.token.line {
+  display: block;
+  min-height: 1.5em;
+}
+
 .docs-prose pre {
   overflow-x: auto;
   border: 1px solid rgba(255, 255, 255, 0.08);

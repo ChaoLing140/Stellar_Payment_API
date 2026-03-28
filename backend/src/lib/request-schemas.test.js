@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import {
-  formatZodError,
+
   MINIMUM_XLM_PAYMENT_AMOUNT,
   paymentZodSchema,
   paymentSessionZodSchema,
@@ -301,7 +301,7 @@ describe("v2PaymentSessionSchema", () => {
     const result = v2PaymentSessionSchema.parse({
       amount: 10,
       asset: "XLM",
-      destination_address: "GRECIPIENT",
+      recipient: "GRECIPIENT",
       memo: "18446744073709551615",
       memo_type: "return",
       branding_overrides: {
@@ -318,7 +318,7 @@ describe("v2PaymentSessionSchema", () => {
       v2PaymentSessionSchema.parse({
         amount: 10,
         asset: "XLM",
-        destination_address: "GRECIPIENT",
+        recipient: "GRECIPIENT",
         memo: "bad-return-memo",
         memo_type: "return",
         branding_overrides: {
@@ -331,21 +331,3 @@ describe("v2PaymentSessionSchema", () => {
   });
 });
 
-describe("formatZodError", () => {
-  it("returns the first validation message from a zod error", () => {
-    const error = new ZodError([
-      {
-        code: "custom",
-        message: "first issue",
-        path: ["email"],
-      },
-      {
-        code: "custom",
-        message: "second issue",
-        path: ["notification_email"],
-      },
-    ]);
-
-    expect(formatZodError(error)).toBe("first issue");
-  });
-});

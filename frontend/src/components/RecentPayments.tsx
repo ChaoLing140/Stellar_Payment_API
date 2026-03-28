@@ -1,26 +1,26 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 import PaymentDetailModal from "@/components/PaymentDetailModal";
+import ExportCsvButton from "@/components/ExportCsvButton";
+import { localeToLanguageTag } from "@/i18n/config";
 import {
   useHydrateMerchantStore,
   useMerchantApiKey,
-  useMerchantHydrated,
   useMerchantId,
 } from "@/lib/merchant-store";
-import PullToRefresh from "react-simple-pull-to-refresh";
 import { usePaymentSocket } from "@/lib/usePaymentSocket";
-import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
-import { localeToLanguageTag } from "@/i18n/config";
-import ExportCsvButton from "@/components/ExportCsvButton";
-import { Transaction }  from "@/lib/exportCsv";
+import { convertToCSV, downloadCSV } from "@/utils/csv";
 
 interface Payment {
   id: string;
   amount: string;
   asset: string;
+  recipient: string;
   status: string;
   description: string | null;
   created_at: string;
@@ -29,9 +29,6 @@ interface Payment {
 interface PaginatedResponse {
   payments: Payment[];
   total_count: number;
-  total_pages: number;
-  page: number;
-  limit: number;
 }
 
 interface FilterState {
@@ -42,9 +39,21 @@ interface FilterState {
   dateTo: string;
 }
 
-const LIMIT = 10;
+type SortColumn = "status" | "amount" | "recipient" | "created_at";
+type SortDirection = "asc" | "desc";
+
+const LIMIT = 100;
 const STATUS_OPTIONS = ["all", "pending", "confirmed", "failed", "refunded"] as const;
-const ASSET_OPTIONS = ["all", "XLM", "USDC"];
+const ASSET_OPTIONS = ["all", "XLM", "USDC"] as const;
+const DEFAULT_FILTERS: FilterState = {
+  search: "",
+  status: "all",
+  asset: "all",
+  dateFrom: "",
+  dateTo: "",
+};
+const DEFAULT_SORT_COLUMN: SortColumn = "created_at";
+const DEFAULT_SORT_DIRECTION: SortDirection = "desc";
 
 function toStatusLabel(
   t: ReturnType<typeof useTranslations>,
@@ -53,48 +62,181 @@ function toStatusLabel(
   return t.has(`statuses.${status}`) ? t(`statuses.${status}`) : status;
 }
 
-export default function RecentPayments({ showSkeleton = false }: { showSkeleton?: boolean }) {
+function filtersFromSearchParams(searchParams: URLSearchParams): FilterState {
+  return {
+    search: searchParams.get("search") ?? "",
+    status: searchParams.get("status") ?? "all",
+    asset: searchParams.get("asset") ?? "all",
+    dateFrom: searchParams.get("date_from") ?? "",
+    dateTo: searchParams.get("date_to") ?? "",
+  };
+}
+
+function isSortColumn(value: string | null): value is SortColumn {
+  return (
+    value === "status" ||
+    value === "amount" ||
+    value === "recipient" ||
+    value === "created_at"
+  );
+}
+
+function isSortDirection(value: string | null): value is SortDirection {
+  return value === "asc" || value === "desc";
+}
+
+function sortFromSearchParams(searchParams: URLSearchParams) {
+  const sortColumn = searchParams.get("sortColumn");
+  const sortDirection = searchParams.get("sortDirection");
+
+  return {
+    sortColumn: isSortColumn(sortColumn) ? sortColumn : DEFAULT_SORT_COLUMN,
+    sortDirection: isSortDirection(sortDirection)
+      ? sortDirection
+      : DEFAULT_SORT_DIRECTION,
+  };
+}
+
+function buildSearchParams(
+  filters: FilterState,
+  sortColumn: SortColumn,
+  sortDirection: SortDirection,
+): URLSearchParams {
+  const params = new URLSearchParams();
+
+  if (filters.search) params.set("search", filters.search);
+  if (filters.status !== "all") params.set("status", filters.status);
+  if (filters.asset !== "all") params.set("asset", filters.asset);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (sortColumn !== DEFAULT_SORT_COLUMN) params.set("sortColumn", sortColumn);
+  if (sortDirection !== DEFAULT_SORT_DIRECTION) {
+    params.set("sortDirection", sortDirection);
+  }
+
+  return params;
+}
+
+function SortArrow({
+  active,
+  direction,
+}: {
+  active: boolean;
+  direction: SortDirection;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex transition-opacity ${active ? "opacity-100" : "opacity-35"}`}
+    >
+      {direction === "asc" ? "\u2191" : "\u2193"}
+    </span>
+  );
+}
+
+export default function RecentPayments({
+  showSkeleton = false,
+}: {
+  showSkeleton?: boolean;
+}) {
   const t = useTranslations("recentPayments");
   const locale = localeToLanguageTag(useLocale());
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [page, setPage] = useState(1);
-  const [, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  // Track IDs of rows that should display the confirmed flash animation
-  const [flashedIds, setFlashedIds] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState<FilterState>({
-    search: "",
-    status: "all",
-    asset: "all",
-    dateFrom: "",
-    dateTo: "",
-  });
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const apiKey = useMerchantApiKey();
-  const hydrated = useMerchantHydrated();
   const merchantId = useMerchantId();
 
   useHydrateMerchantStore();
 
-  // Real-time payment confirmation via WebSocket (issue #229)
+  const filters = useMemo(
+    () => filtersFromSearchParams(searchParams),
+    [searchParams],
+  );
+  const { sortColumn, sortDirection } = useMemo(
+    () => sortFromSearchParams(searchParams),
+    [searchParams],
+  );
+  const hasActiveFilters =
+    filters.search ||
+    filters.status !== "all" ||
+    filters.asset !== "all" ||
+    filters.dateFrom ||
+    filters.dateTo;
+
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const page = 1;
+  const [totalCount, setTotalCount] = useState(0);
+  const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [flashedIds, setFlashedIds] = useState<Set<string>>(new Set());
+
+  const updateFilters = useCallback(
+    (
+      nextFilters: FilterState,
+      nextSortColumn: SortColumn = sortColumn,
+      nextSortDirection: SortDirection = sortDirection,
+    ) => {
+      const params = buildSearchParams(
+        nextFilters,
+        nextSortColumn,
+        nextSortDirection,
+      );
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, sortColumn, sortDirection],
+  );
+
+  const handleFilterChange = useCallback(
+    (key: keyof FilterState, value: string) => {
+      updateFilters({ ...filters, [key]: value });
+    },
+    [filters, updateFilters],
+  );
+
+  const clearFilter = useCallback(
+    (key: keyof FilterState) => {
+      updateFilters({
+        ...filters,
+        [key]: key === "status" || key === "asset" ? "all" : "",
+      });
+    },
+    [filters, updateFilters],
+  );
+
+  const clearAllFilters = useCallback(() => {
+    updateFilters(DEFAULT_FILTERS);
+  }, [updateFilters]);
+
+  const handleSort = useCallback(
+    (column: SortColumn) => {
+      const nextDirection =
+        sortColumn === column && sortDirection === "asc" ? "desc" : "asc";
+      updateFilters(filters, column, nextDirection);
+    },
+    [filters, sortColumn, sortDirection, updateFilters],
+  );
+
   const handleConfirmed = useCallback(
-    (event: { id: string; amount: number; asset: string; asset_issuer: string | null; recipient: string; tx_id: string; confirmed_at: string }) => {
+    (event: {
+      id: string;
+      amount: number;
+      asset: string;
+      asset_issuer: string | null;
+      recipient: string;
+      tx_id: string;
+      confirmed_at: string;
+    }) => {
       // Update the row status in-place without a full refetch
       setPayments((prev) =>
-        prev.map((p) =>
-          p.id === event.id ? { ...p, status: "confirmed" } : p,
+        prev.map((payment) =>
+          payment.id === event.id ? { ...payment, status: "confirmed" } : payment,
         ),
       );
-      // Trigger flash animation on the confirmed row
       setFlashedIds((prev) => new Set([...prev, event.id]));
-      // Remove flash class after animation completes (600 ms)
       setTimeout(() => {
         setFlashedIds((prev) => {
           const next = new Set(prev);
@@ -108,125 +250,119 @@ export default function RecentPayments({ showSkeleton = false }: { showSkeleton?
 
   usePaymentSocket(merchantId, handleConfirmed);
 
-  // useEffect(() => {
-  //   if (!hydrated) return;
+  useEffect(() => {
+    const controller = new AbortController();
 
-  //   const controller = new AbortController();
+    async function fetchPayments() {
+      try {
+        setLoading(true);
+        setError(null);
 
-  //   const fetchPayments = async () => {
-  //     try {
-  //       if (!apiKey) {
-  //         setError(t("missingApiKey"));
-  //         setLoading(false);
-  //         return;
-  //       }
+        if (!apiKey) {
+          setError(t("missingApiKey"));
+          setPayments([]);
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
 
-  //       const apiUrl =
-  //         process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-        
-  //       // Build query params
-  //       const params = new URLSearchParams({
-  //         page: page.toString(),
-  //         limit: LIMIT.toString(),
-  //       });
-        
-  //       if (filters.search) params.append("search", filters.search);
-  //       if (filters.status !== "all") params.append("status", filters.status);
-  //       if (filters.asset !== "all") params.append("asset", filters.asset);
-  //       if (filters.dateFrom) params.append("date_from", filters.dateFrom);
-  //       if (filters.dateTo) params.append("date_to", filters.dateTo);
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+        const params = buildSearchParams(filters, sortColumn, sortDirection);
+        params.set("page", page.toString());
+        params.set("limit", LIMIT.toString());
 
-  //       const response = await fetch(
-  //         `${apiUrl}/api/payments?${params.toString()}`,
-  //         {
-  //           headers: {
-  //             "x-api-key": apiKey,
-  //           },
-  //           signal: controller.signal,
-  //         },
-  //       );
+        const response = await fetch(`${apiUrl}/api/payments?${params.toString()}`, {
+          headers: {
+            "x-api-key": apiKey,
+          },
+          signal: controller.signal,
+        });
 
-  //       if (!response.ok) throw new Error(t("fetchFailed"));
+        if (!response.ok) {
+          throw new Error(t("fetchFailed"));
+        }
 
-  //       const data: PaginatedResponse = await response.json();
-  //       setPayments(data.payments ?? []);
-  //       setTotalPages(data.total_pages ?? 1);
-  //       setTotalCount(data.total_count ?? 0);
-  //     } catch (err: unknown) {
-  //       if (err instanceof Error && err.name === "AbortError") return;
-  //       setError(
-  //         err instanceof Error ? err.message : t("loadFailed"),
-  //       );
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-
-  //   fetchPayments();
-
-  //   return () => controller.abort();
-  // }, [apiKey, page, hydrated, filters, t]);
-
-  // TEMP: mock data to test CSV export — remove when backend is integrated
-useEffect(() => {
-  setPayments([
-    {
-      id: "mock-001",
-      amount: "100",
-      asset: "XLM",
-      status: "confirmed",
-      description: "Test payment 1",
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: "mock-002",
-      amount: "50",
-      asset: "USDC",
-      status: "pending",
-      description: "Test payment 2",
-      created_at: new Date().toISOString(),
-    },
-  ]);
-  setLoading(false);
-}, []);
-
-  const handleFilterChange = (key: keyof FilterState, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    setPage(1);
-    setPayments([]);
-  };
-
-  const clearFilter = (key: keyof FilterState) => {
-    if (key === "status" || key === "asset") {
-      setFilters((prev) => ({ ...prev, [key]: "all" }));
-    } else {
-      setFilters((prev) => ({ ...prev, [key]: "" }));
+        const data: PaginatedResponse = await response.json();
+        setPayments(data.payments ?? []);
+        setTotalCount(data.total_count ?? 0);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
+        setError(err instanceof Error ? err.message : t("loadFailed"));
+      } finally {
+        setLoading(false);
+      }
     }
-    setPage(1);
-  };
 
-  const clearAllFilters = () => {
-    setFilters({
-      search: "",
-      status: "all",
-      asset: "all",
-      dateFrom: "",
-      dateTo: "",
+    fetchPayments();
+
+    return () => controller.abort();
+  }, [apiKey, filters, sortColumn, sortDirection, t]);
+
+  const sortedPayments = useMemo(() => {
+    const statusOrder: Record<string, number> = {
+      pending: 0,
+      confirmed: 1,
+      completed: 2,
+      failed: 3,
+      refunded: 4,
+    };
+
+    return [...payments].sort((left, right) => {
+      let result = 0;
+
+      switch (sortColumn) {
+        case "amount":
+          result = Number(left.amount) - Number(right.amount);
+          break;
+        case "recipient":
+          result = left.recipient.localeCompare(right.recipient);
+          break;
+        case "status":
+          result =
+            (statusOrder[left.status] ?? Number.MAX_SAFE_INTEGER) -
+            (statusOrder[right.status] ?? Number.MAX_SAFE_INTEGER);
+          break;
+        case "created_at":
+        default:
+          result =
+            new Date(left.created_at).getTime() -
+            new Date(right.created_at).getTime();
+          break;
+      }
+
+      if (result === 0) {
+        result = left.id.localeCompare(right.id);
+      }
+
+      return sortDirection === "asc" ? result : -result;
     });
-    setPage(1);
-    setPayments([]);
-  };
-
-  const hasActiveFilters =
-    filters.search ||
-    filters.status !== "all" ||
-    filters.asset !== "all" ||
-    filters.dateFrom ||
-    filters.dateTo;
+  }, [payments, sortColumn, sortDirection]);
 
   const handlePaymentClick = (paymentId: string) => {
     setSelectedPayment(paymentId);
     setIsModalOpen(true);
+  };
+
+  const handleDownloadCSV = () => {
+    if (!sortedPayments.length) return;
+
+    const mapped = sortedPayments.map((p) => ({
+      ID: p.id,
+      Amount: `${p.amount.toLocaleString()} ${p.asset}`,
+      Status: p.status.charAt(0).toUpperCase() + p.status.slice(1),
+      Recipient: p.recipient,
+      Description: p.description ?? "",
+      Date: new Date(p.created_at).toLocaleString(),
+    }));
+
+    const csv = convertToCSV(mapped);
+    if (!csv) return;
+
+    const filename = `payments_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+
+    downloadCSV(csv, filename);
   };
 
   const closeModal = () => {
@@ -235,56 +371,6 @@ useEffect(() => {
   };
 
   if (showSkeleton || loading) {
-    return (
-      <SkeletonTheme baseColor="#1e293b" highlightColor="#334155">
-        <div className="flex flex-col gap-4">
-          {/* Search and Filters Skeleton */}
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Skeleton width={60} height={14} borderRadius={4} />
-                <Skeleton height={40} borderRadius={12} />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="flex flex-col gap-2">
-                    <Skeleton width={60} height={14} borderRadius={4} />
-                    <Skeleton height={40} borderRadius={12} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Table Skeleton */}
-          <div className="overflow-x-auto rounded-xl border border-white/10">
-            <div className="border-b border-white/10 bg-white/5 px-4 py-3">
-              <div className="flex justify-between">
-                {[...Array(5)].map((_, i) => (
-                  <Skeleton key={i} width={80} height={14} borderRadius={4} />
-                ))}
-              </div>
-            </div>
-            <div className="divide-y divide-white/5">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="px-4 py-4">
-                  <div className="flex justify-between items-center">
-                    <Skeleton width={70} height={24} borderRadius={999} />
-                    <Skeleton width={100} height={20} borderRadius={4} />
-                    <Skeleton width={120} height={16} borderRadius={4} className="hidden sm:block" />
-                    <Skeleton width={80} height={16} borderRadius={4} className="hidden md:block" />
-                    <Skeleton width={60} height={16} borderRadius={4} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </SkeletonTheme>
-    );
-  }
-
-  if (error) {
     return (
       <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-8 text-center">
         {/* Error State Illustration */}
@@ -297,6 +383,7 @@ useEffect(() => {
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
+              
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -310,11 +397,13 @@ useEffect(() => {
         <div className="space-y-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-white">
-              {t("connectionError")}
+              Connection Error
             </h3>
+
             <p className="text-sm text-yellow-400">{error}</p>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              {t("backendHint")}
+              Make sure the backend is running and the payments endpoint is
+              available.
             </p>
           </div>
 
@@ -336,7 +425,7 @@ useEffect(() => {
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                 />
               </svg>
-              {t("retryConnection")}
+              Retry Connection
             </button>
 
             <button
@@ -356,7 +445,7 @@ useEffect(() => {
                   d="M13 10V3L4 14h7v7l9-11h-7z"
                 />
               </svg>
-              {t("testWebhook")}
+              Test Webhook Anyway
             </button>
           </div>
 
@@ -365,12 +454,27 @@ useEffect(() => {
               <div className="w-2 h-2 rounded-full bg-yellow-400 mt-1.5 flex-shrink-0" />
               <div className="text-left">
                 <p className="text-xs font-medium text-yellow-400">
-                  {t("troubleshootingTip")}
+                  Troubleshooting Tip
                 </p>
+            
                 <p className="text-xs text-slate-500">
-                  {t("troubleshootingDescription")}
+                  You can still test webhook functionality while backend
+                  services are being restored.
                 </p>
               </div>
+            </div>
+            <div className="divide-y divide-white/5">
+              {[...Array(5)].map((_, index) => (
+                <div key={index} className="px-4 py-4">
+                  <div className="flex items-center justify-between">
+                    <Skeleton width={70} height={24} borderRadius={999} />
+                    <Skeleton width={100} height={20} borderRadius={4} />
+                    <Skeleton width={120} height={16} borderRadius={4} className="hidden sm:block" />
+                    <Skeleton width={80} height={16} borderRadius={4} className="hidden md:block" />
+                    <Skeleton width={60} height={16} borderRadius={4} />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -378,7 +482,7 @@ useEffect(() => {
     );
   }
 
-  if (payments.length === 0) {
+  if (error) {
     return (
       <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
         {/* Empty State Illustration */}
@@ -404,10 +508,12 @@ useEffect(() => {
         <div className="space-y-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-white">
-              {t("emptyTitle")}
+              No payments yet
             </h3>
+            
             <p className="text-sm text-slate-400 max-w-md mx-auto">
-              {t("emptyDescription")}
+              Start accepting payments by creating your first payment link or
+              testing webhooks to see transaction data flow. 
             </p>
           </div>
 
@@ -429,7 +535,7 @@ useEffect(() => {
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              {t("createPaymentLink")}
+              Create Payment Link
               <div className="absolute inset-0 -z-10 bg-mint/20 opacity-0 blur-xl transition-opacity group-hover:opacity-100" />
             </button>
 
@@ -437,6 +543,7 @@ useEffect(() => {
               onClick={() => window.open("https://webhook.site", "_blank")}
               className="inline-flex items-center gap-2 rounded-lg border border-mint/30 bg-mint/5 px-4 py-2 text-sm font-medium text-mint transition-all hover:bg-mint/10"
             >
+             
               <svg
                 className="w-4 h-4"
                 fill="none"
@@ -450,7 +557,7 @@ useEffect(() => {
                   d="M13 10V3L4 14h7v7l9-11h-7z"
                 />
               </svg>
-              {t("sendTestWebhook")}
+              Send Test Webhook
             </button>
           </div>
 
@@ -458,11 +565,13 @@ useEffect(() => {
             <div className="flex items-start gap-3">
               <div className="w-2 h-2 rounded-full bg-mint mt-1.5 flex-shrink-0" />
               <div className="text-left space-y-1">
+                
                 <p className="text-xs font-medium text-mint">
-                  {t("gettingStartedTitle")}
+                  Getting Started Guide
                 </p>
                 <p className="text-xs text-slate-400">
-                  {t("gettingStartedDescription")}
+                  Use webhook tools to test payment notifications and see
+                  real-time data appear in this dashboard. 
                 </p>
               </div>
             </div>
@@ -474,20 +583,21 @@ useEffect(() => {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Search and Filters */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-4">
         <div className="flex flex-col gap-4">
-          {/* Search Bar */}
           <div className="flex flex-col gap-2">
-            <label htmlFor="search" className="text-xs font-medium uppercase tracking-wider text-slate-400">
-              {t("search")}
+            <label
+              htmlFor="search"
+              className="text-xs font-medium uppercase tracking-wider text-slate-400"
+            >
+              Search
             </label>
             <div className="relative">
               <input
                 id="search"
                 type="text"
                 value={filters.search}
-                onChange={(e) => handleFilterChange("search", e.target.value)}
+                onChange={(event) => handleFilterChange("search", event.target.value)}
                 placeholder={t("searchPlaceholder")}
                 className="w-full rounded-xl border border-white/10 bg-black/40 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-600 focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
               />
@@ -507,37 +617,42 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Filter Row */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Status Filter */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="status" className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                {t("status")}
+              <label
+                htmlFor="status"
+                className="text-xs font-medium uppercase tracking-wider text-slate-400"
+              >
+                Status
               </label>
               <select
                 id="status"
                 value={filters.status}
-                onChange={(e) => handleFilterChange("status", e.target.value)}
-                className="rounded-xl border border-white/10 bg-black/40 py-2.5 px-3 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
+                onChange={(event) => handleFilterChange("status", event.target.value)}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
               >
                 {STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
-                    {status === "all" ? t("allStatuses") : toStatusLabel(t, status)}
+                    {status === "all"
+                      ? "All Statuses"
+                      : status.charAt(0).toUpperCase() + status.slice(1)}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Asset Filter */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="asset" className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                {t("asset")}
+              <label
+                htmlFor="asset"
+                className="text-xs font-medium uppercase tracking-wider text-slate-400"
+              >
+                Asset
               </label>
               <select
                 id="asset"
                 value={filters.asset}
-                onChange={(e) => handleFilterChange("asset", e.target.value)}
-                className="rounded-xl border border-white/10 bg-black/40 py-2.5 px-3 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
+                onChange={(event) => handleFilterChange("asset", event.target.value)}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
               >
                 {ASSET_OPTIONS.map((asset) => (
                   <option key={asset} value={asset}>
@@ -547,110 +662,159 @@ useEffect(() => {
               </select>
             </div>
 
-            {/* Date From */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="dateFrom" className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                {t("fromDate")}
+              <label
+                htmlFor="dateFrom"
+                className="text-xs font-medium uppercase tracking-wider text-slate-400"
+              >
+                From Date
               </label>
               <input
                 id="dateFrom"
                 type="date"
                 value={filters.dateFrom}
-                onChange={(e) => handleFilterChange("dateFrom", e.target.value)}
-                className="rounded-xl border border-white/10 bg-black/40 py-2.5 px-3 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50 [color-scheme:dark]"
+                onChange={(event) => handleFilterChange("dateFrom", event.target.value)}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50 [color-scheme:dark]"
               />
             </div>
 
-            {/* Date To */}
             <div className="flex flex-col gap-2">
-              <label htmlFor="dateTo" className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                {t("toDate")}
+              <label
+                htmlFor="dateTo"
+                className="text-xs font-medium uppercase tracking-wider text-slate-400"
+              >
+                To Date
               </label>
               <input
                 id="dateTo"
                 type="date"
                 value={filters.dateTo}
-                onChange={(e) => handleFilterChange("dateTo", e.target.value)}
-                className="rounded-xl border border-white/10 bg-black/40 py-2.5 px-3 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50 [color-scheme:dark]"
+                onChange={(event) => handleFilterChange("dateTo", event.target.value)}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50 [color-scheme:dark]"
               />
             </div>
           </div>
 
-          {/* Filter Chips and Clear All */}
           {hasActiveFilters && (
             <div className="flex flex-wrap items-center gap-2 pt-2">
-              <span className="text-xs text-slate-400">{t("activeFilters")}</span>
-              
+              <span className="text-xs text-slate-400">Active filters:</span>
+
               {filters.search && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                  {t("searchChip", { value: filters.search })}
+                  Search: &quot;{filters.search}&quot;
                   <button
                     onClick={() => clearFilter("search")}
                     className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                    aria-label={t("clearSearchFilter")}
+                    aria-label="Clear search filter"
                   >
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </span>
               )}
-
               {filters.status !== "all" && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                  {t("statusChip", { value: toStatusLabel(t, filters.status) })}
+                  Status: {filters.status}
                   <button
                     onClick={() => clearFilter("status")}
                     className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                    aria-label={t("clearStatusFilter")}
+                    aria-label="Clear status filter"
                   >
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </span>
               )}
-
               {filters.asset !== "all" && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                  {t("assetChip", { value: filters.asset })}
+                  Asset: {filters.asset}
                   <button
                     onClick={() => clearFilter("asset")}
                     className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                    aria-label={t("clearAssetFilter")}
+                    aria-label="Clear asset filter"
                   >
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </span>
               )}
-
               {filters.dateFrom && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                  {t("fromChip", { value: filters.dateFrom })}
+                  From: {filters.dateFrom}
                   <button
                     onClick={() => clearFilter("dateFrom")}
                     className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                    aria-label={t("clearFromDateFilter")}
+                    aria-label="Clear from date filter"
                   >
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </span>
               )}
-
               {filters.dateTo && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                  {t("toChip", { value: filters.dateTo })}
+                  To: {filters.dateTo}
                   <button
                     onClick={() => clearFilter("dateTo")}
                     className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                    aria-label={t("clearToDateFilter")}
+                    aria-label="Clear to date filter"
                   >
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </span>
@@ -663,192 +827,201 @@ useEffect(() => {
                 {t("clearAll")}
               </button>
             </div>
-
-            {/* Filter Chips and Clear All */}
-            {hasActiveFilters && (
-              <div className="flex flex-wrap items-center gap-2 pt-2">
-                <span className="text-xs text-slate-400">Active filters:</span>
-
-                {filters.search && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                    Search: &quot;{filters.search}&quot;
-                    <button
-                      onClick={() => clearFilter("search")}
-                      className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                      aria-label="Clear search filter"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                )}
-
-                {filters.status !== "all" && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                    Status: {filters.status}
-                    <button
-                      onClick={() => clearFilter("status")}
-                      className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                      aria-label="Clear status filter"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                )}
-
-                {filters.asset !== "all" && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                    Asset: {filters.asset}
-                    <button
-                      onClick={() => clearFilter("asset")}
-                      className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                      aria-label="Clear asset filter"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                )}
-
-                {filters.dateFrom && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                    From: {filters.dateFrom}
-                    <button
-                      onClick={() => clearFilter("dateFrom")}
-                      className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                      aria-label="Clear from date filter"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                )}
-
-                {filters.dateTo && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-mint/30 bg-mint/10 px-3 py-1 text-xs text-mint">
-                    To: {filters.dateTo}
-                    <button
-                      onClick={() => clearFilter("dateTo")}
-                      className="ml-1 rounded-full p-0.5 hover:bg-mint/20"
-                      aria-label="Clear to date filter"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                )}
-
-                <button
-                  onClick={clearAllFilters}
-                  className="ml-auto text-xs font-medium text-slate-400 underline underline-offset-4 hover:text-white"
-                >
-                  Clear all
-                </button>
-              </div>
-            )}
-          </div>
+          )}
         </div>
+      </div>
 
-      {/* Results count */}
-      <div className="flex items-center justify-between">
-      <p className="text-xs text-slate-400">
-        {t("showingResults", { shown: payments.length, total: totalCount })}
-        {hasActiveFilters ? ` ${t("filteredSuffix")}` : ""}
-      </p>
-      <ExportCsvButton
-      transactions={payments.map((p) => ({
-        id:            p.id,
-        createdAt:     p.created_at,
-        type:          "payment",
-        status:        p.status,
-        amount:        String(p.amount),
-        asset:         p.asset,
-        sourceAccount: "",
-        destAccount:   "",
-        hash:          p.id,
-        description:   p.description ?? "",
-      }))}
-      disabled={loading}
-      filename={`stellar_payments_${new Date().toISOString().slice(0, 10)}.csv`}
-    />
-    </div>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-xs text-slate-400">
+          {t("showingResults", { shown: sortedPayments.length, total: totalCount })}
+          {hasActiveFilters ? ` ${t("filteredSuffix")}` : ""}
+        </p>
 
+        <ExportCsvButton
+          transactions={sortedPayments.map((payment) => ({
+            id: payment.id,
+            createdAt: payment.created_at,
+            type: "payment",
+            status: payment.status,
+            amount: String(payment.amount),
+            asset: payment.asset,
+            sourceAccount: "",
+            destAccount: "",
+            hash: payment.id,
+            description: payment.description ?? "",
+          }))}
+          disabled={loading}
+          filename={`stellar_payments_${new Date().toISOString().slice(0, 10)}.csv`}
+        />
+      </div>
+
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold text-white">Recent Payments</h2>
+
+        <button
+          onClick={handleDownloadCSV}
+          disabled={!sortedPayments.length}
+          className="rounded-lg bg-mint px-4 py-2 text-sm font-medium text-black hover:bg-glow disabled:opacity-50"
+        >
+          Download CSV
+        </button>
+      </div>
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-white/10">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-white/10 bg-white/5">
-              <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                {t("tableStatus")}
+              <th
+                aria-sort={
+                  sortColumn === "status"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("status")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableStatus")}
+                  <SortArrow
+                    active={sortColumn === "status"}
+                    direction={sortDirection}
+                  />
+                </button>
               </th>
-              <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                {t("tableAmount")}
+              <th
+                aria-sort={
+                  sortColumn === "amount"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("amount")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableAmount")}
+                  <SortArrow
+                    active={sortColumn === "amount"}
+                    direction={sortDirection}
+                  />
+                </button>
               </th>
-              <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 sm:table-cell">
-                {t("tableDescription")}
+              <th
+                aria-sort={
+                  sortColumn === "recipient"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 sm:table-cell"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("recipient")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableRecipient")}
+                  <SortArrow
+                    active={sortColumn === "recipient"}
+                    direction={sortDirection}
+                  />
+                </button>
               </th>
-              <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 md:table-cell">
-                {t("tableDate")}
+              <th
+                aria-sort={
+                  sortColumn === "created_at"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 md:table-cell"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("created_at")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableDate")}
+                  <SortArrow
+                    active={sortColumn === "created_at"}
+                    direction={sortDirection}
+                  />
+                </button>
               </th>
               <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
                 {t("tableLink")}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
-            {payments.map((payment) => (
-              <tr
-                key={payment.id}
-                className={`transition-colors hover:bg-white/5 cursor-pointer ${
-                  flashedIds.has(payment.id)
-                    ? "animate-payment-confirmed bg-green-500/10"
-                    : ""
-                }`}
-                onClick={() => handlePaymentClick(payment.id)}
-              >
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      payment.status === "confirmed"
-                        ? "bg-green-500/20 text-green-400"
-                        : "bg-yellow-500/20 text-yellow-400"
-                    }`}
-                  >
-                    {toStatusLabel(t, payment.status)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-medium text-white">
-                  {payment.amount} {payment.asset}
-                </td>
-                <td className="hidden px-4 py-3 text-slate-400 sm:table-cell">
-                  {payment.description || t("emptyDescriptionValue")}
-                </td>
-                <td className="hidden px-4 py-3 text-slate-400 md:table-cell">
-                  {new Date(payment.created_at).toLocaleDateString(locale)}
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePaymentClick(payment.id);
-                    }}
-                    className="font-mono text-xs text-mint transition-colors hover:text-glow"
-                  >
-                    {t("view")} →
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </PullToRefresh>
 
+            <tbody className="divide-y divide-white/5">
+              {sortedPayments.map((payment) => (
+                <tr
+                  key={payment.id}
+                  className={`cursor-pointer transition-colors hover:bg-white/5 ${
+                    flashedIds.has(payment.id)
+                      ? "animate-payment-confirmed bg-green-500/10"
+                      : ""
+                  }`}
+                  onClick={() => handlePaymentClick(payment.id)}
+                >
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        payment.status === "confirmed"
+                          ? "bg-green-500/20 text-green-400"
+                          : payment.status === "failed"
+                            ? "bg-red-500/20 text-red-400"
+                            : "bg-yellow-500/20 text-yellow-400"
+                      }`}
+                    >
+                      {toStatusLabel(t, payment.status)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-medium text-white">
+                    {payment.amount} {payment.asset}
+                  </td>
+                  <td className="hidden px-4 py-3 text-slate-400 sm:table-cell">
+                    <code className="font-mono text-xs text-slate-300">
+                      {payment.recipient}
+                    </code>
+                  </td>
+                  <td className="hidden px-4 py-3 text-slate-400 md:table-cell">
+                    {new Date(payment.created_at).toLocaleDateString(locale)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handlePaymentClick(payment.id);
+                      }}
+                      className="font-mono text-xs text-mint transition-colors hover:text-glow"
+                    >
+                      {t("view")} {"->"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+      <PaymentDetailModal
+        paymentId={selectedPayment}
+        isOpen={isModalOpen}
+        onClose={closeModal}
+      />
+    </div>
   );
 }

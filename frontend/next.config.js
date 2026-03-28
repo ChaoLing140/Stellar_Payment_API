@@ -5,10 +5,21 @@ const createNextIntlPlugin = require("next-intl/plugin");
 const withSentryConfig = (config) => config;
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+const withPWA = require("@ducanh2912/next-pwa").default({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  register: true,
+  skipWaiting: true,
+  fallbacks: {
+    offline: "/offline",
+  },
+});
+
 const nextConfig = {
   reactStrictMode: true,
   compress: true,
   poweredByHeader: false,
+  allowedDevOrigins: ["127.0.0.1"],
   images: {
     remotePatterns: [
       {
@@ -33,6 +44,6 @@ const sentryWebpackPluginOptions = {
   silent: true, // Suppresses all logs
 };
 
-module.exports = withNextIntl(
-  withSentryConfig(nextConfig, sentryWebpackPluginOptions),
+module.exports = withPWA(
+  withNextIntl(withSentryConfig(nextConfig, sentryWebpackPluginOptions)),
 );

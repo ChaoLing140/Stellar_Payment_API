@@ -8,18 +8,27 @@ import ToastProvider from "@/components/ToastProvider";
 import CommandPalette from "@/components/CommandPalette";
 import KeyboardShortcuts from "@/components/KeyboardShortcuts";
 import { WalletContextProvider } from "@/lib/wallet-context";
+import { Metadata, Viewport } from "next";
 
-const useE2ESystemFonts = process.env.NEXT_PUBLIC_E2E === "1";
-const spaceGrotesk = useE2ESystemFonts
-  ? null
-  : Space_Grotesk({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const spaceMono = useE2ESystemFonts
-  ? null
-  : Space_Mono({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-mono", display: "swap" });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
+const spaceMono = Space_Mono({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-mono", display: "swap" });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Stellar Payment Dashboard",
-  description: "Accept Stellar payments with simple links and status tracking."
+  description: "Accept Stellar payments with simple links and status tracking.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "StellarPay",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#5ef2c0",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -28,9 +37,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body
-        className={`${spaceGrotesk?.variable ?? ""} ${spaceMono?.variable ?? ""} min-h-screen font-sans`}
-      >
+      <body className={`${spaceGrotesk.variable} ${spaceMono.variable} min-h-screen font-sans`}>
         <NextIntlClientProvider locale={locale} messages={messages}>
           <ThemeProvider>
             <WalletContextProvider>

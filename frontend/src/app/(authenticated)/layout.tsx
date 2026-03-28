@@ -1,20 +1,27 @@
 "use client";
 
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import PaymentToastListener from "@/components/PaymentToastListener";
 import { motion } from "framer-motion";
+import AuthGuard from "@/components/AuthGuard";
+import { useHydrateMerchantStore } from "@/lib/merchant-store";
 
 export default function AuthenticatedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  useHydrateMerchantStore();
+  
   return (
-    <div className="flex min-h-screen bg-black">
+    <AuthGuard>
+      <div className="flex min-h-screen bg-black">
       {/* Sidebar - fixed width for desktop layout offset */}
       <Sidebar />
+      <MobileNav />
       <PaymentToastListener />
 
       {/* Main Content Area */}
@@ -41,5 +48,6 @@ export default function AuthenticatedLayout({
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }

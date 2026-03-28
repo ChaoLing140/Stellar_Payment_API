@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import CopyButton from "@/components/CopyButton";
 
 export default function VRTPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -19,6 +20,12 @@ export default function VRTPage() {
           <Button variant="secondary" data-testid="vrt-btn-secondary">Secondary Button</Button>
           <Button variant="primary" isLoading data-testid="vrt-btn-loading">Primary Loading</Button>
           <Button variant="primary" disabled data-testid="vrt-btn-disabled">Disabled</Button>
+        </div>
+        <div className="inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <span className="font-mono text-sm text-mint" data-testid="vrt-copy-value">
+            sk_test_vrt_copy_glitch_signal
+          </span>
+          <CopyButton text="sk_test_vrt_copy_glitch_signal" className="shrink-0" />
         </div>
       </section>
 
