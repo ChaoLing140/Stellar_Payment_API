@@ -6,6 +6,7 @@ import CopyButton from "@/components/CopyButton";
 import toast from "react-hot-toast";
 import DangerZone from "@/components/DangerZone";
 import WebhookHealthIndicator from "@/components/WebhookHealthIndicator";
+import { EmailReceiptPreview } from "@/components/EmailReceiptPreview";
 import {
   useHydrateMerchantStore,
   useMerchantApiKey,
@@ -144,6 +145,7 @@ export default function SettingsPage() {
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [loadingBranding, setLoadingBranding] = useState(false);
   const [savingBranding, setSavingBranding] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Webhook state
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -791,6 +793,34 @@ export default function SettingsPage() {
                   ? "Loading..."
                   : "Save Branding"}
             </button>
+
+            <button
+              type="button"
+              onClick={() => setIsPreviewOpen(true)}
+              disabled={!apiKey}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 font-semibold text-white transition-all hover:bg-white/10 disabled:opacity-50"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                />
+              </svg>
+              Preview Receipt
+            </button>
           </section>
         )}
 
@@ -1093,6 +1123,14 @@ export default function SettingsPage() {
 
         {activeTab === "danger" && <DangerZone apiKey={apiKey} />}
       </div>
+
+      <EmailReceiptPreview
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        branding={branding}
+        apiKey={apiKey}
+        apiUrl={API_URL}
+      />
 
       {/* Footer nav */}
       <footer className="flex justify-center gap-6 text-xs text-slate-500">
