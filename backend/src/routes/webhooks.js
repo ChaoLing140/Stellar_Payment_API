@@ -14,17 +14,16 @@ const bulkRetrySchema = z.object({
  * /api/webhooks/logs:
  *   get:
  *     summary: Get webhook delivery logs for authenticated merchant
- *     description: Retrieve paginated webhook delivery logs for the authenticated merchant account
+ *     description: Retrieve paginated webhook delivery logs for the authenticated merchant account using cursor-based pagination
  *     tags: [Webhooks]
  *     security:
  *       - ApiKeyAuth: []
  *     parameters:
  *       - in: query
- *         name: page
+ *         name: cursor
  *         schema:
- *           type: integer
- *           default: 1
- *         description: Page number (1-indexed)
+ *           type: string
+ *         description: Pagination cursor (base64 encoded)
  *       - in: query
  *         name: limit
  *         schema:
@@ -50,40 +49,11 @@ const bulkRetrySchema = z.object({
  *                   type: array
  *                   items:
  *                     type: object
- *                     properties:
- *                       id:
- *                         type: string
- *                       payment_id:
- *                         type: string
- *                       status_code:
- *                         type: integer
- *                       success:
- *                         type: boolean
- *                       response_body:
- *                         type: string
- *                       timestamp:
- *                         type: string
- *                         format: date-time
- *                       payment:
- *                         type: object
- *                         properties:
- *                           amount:
- *                             type: number
- *                           asset:
- *                             type: string
- *                           status:
- *                             type: string
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     page:
- *                       type: integer
- *                     limit:
- *                       type: integer
- *                     total:
- *                       type: integer
- *                     totalPages:
- *                       type: integer
+ *                 next_cursor:
+ *                   type: string
+ *                   nullable: true
+ *                 limit:
+ *                   type: integer
  *       401:
  *         description: Unauthorized - invalid or missing API key
  *       500:
@@ -91,68 +61,14 @@ const bulkRetrySchema = z.object({
  */
 router.get("/webhooks/logs", async (req, res, next) => {
   try {
-    const merchantId = req.merchant.id;
-    
-    // Parse pagination params
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const offset = (page - 1) * limit;
-    
-    // Build query
-    let query = supabase
-      .from("webhook_delivery_logs")
-      .select(`
-        id,
-        payment_id,
-        status_code,
-        response_body,
-        timestamp,
-        payments!inner(merchant_id, amount, asset, status)
-      `, { count: 'exact' })
-      .eq("payments.merchant_id", merchantId)
-      .order("timestamp", { ascending: false });
-    
-    // Filter by status if provided
-    if (req.query.status === 'success') {
-      query = query.gte("status_code", 200).lt("status_code", 300);
-    } else if (req.query.status === 'failure') {
-      query = query.or("status_code.lt.200,status_code.gte.300");
-    }
-    
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1);
-    
-    const { data: logsData, error, count } = await query;
-    
-    if (error) {
-      error.status = 500;
-      throw error;
-    }
-    
-    // Format response
-    const logs = logsData.map(log => ({
-      id: log.id,
-      payment_id: log.payment_id,
-      status_code: log.status_code,
-      success: log.status_code >= 200 && log.status_code < 300,
-      response_body: log.response_body,
-      timestamp: log.timestamp,
-      payment: {
-        amount: log.payments.amount,
-        asset: log.payments.asset,
-        status: log.payments.status
-      }
-    }));
-    
-    res.json({
-      logs,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+    const { cursor, limit, status } = req.query;
+    const result = await merchantService.getWebhookLogs(req.merchant.id, {
+      cursor,
+      limit,
+      status,
     });
+
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -188,28 +104,13 @@ router.post("/webhooks/test", requireApiKeyAuth(), async (req, res, next) => {
 
 router.get("/webhook-logs", async (req, res, next) => {
   try {
-    const { rows } = await req.app.locals.pool.query(
-      `
-        select
-          l.id,
-          l.payment_id,
-          l.status_code,
-          l.timestamp as created_at,
-          p.webhook_url as url
-        from webhook_delivery_logs l
-        join payments p on p.id = l.payment_id
-        where p.merchant_id = $1
-        order by l.timestamp desc
-      `,
-      [req.merchant.id],
-    );
-
-    res.json({
-      logs: rows.map((row) => ({
-        ...row,
-        event: "payment.confirmed",
-      })),
+    const { cursor, limit, status } = req.query;
+    const result = await merchantService.getWebhookLogs(req.merchant.id, {
+      cursor,
+      limit,
+      status,
     });
+    res.json(result);
   } catch (err) {
     next(err);
   }
