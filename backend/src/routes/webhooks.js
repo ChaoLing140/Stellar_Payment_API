@@ -2,22 +2,30 @@ import express from "express";
 import { merchantService } from "../services/merchantService.js";
 import { requireApiKeyAuth } from "../lib/auth.js";
 import { supabase } from "../lib/supabase.js";
+import { z } from "zod";
+import { queueBulkWebhookRetries } from "../lib/webhook-retries.js";
+import { generatePaginationLinks } from "../lib/pagination-links.js";
 
 const router = express.Router();
+const bulkRetrySchema = z.object({
+  log_ids: z.array(z.string().uuid()).min(1).max(100),
+});
 
 /**
  * @swagger
- * /api/webhooks/logs:
+ * /api/webhook-logs:
  *   get:
  *     summary: Get webhook delivery logs for authenticated merchant
+ *     description: Retrieve paginated webhook delivery logs for the authenticated merchant account using cursor-based pagination
  *     tags: [Webhooks]
+ *     security:
+ *       - ApiKeyAuth: []
  *     parameters:
  *       - in: query
- *         name: page
+ *         name: cursor
  *         schema:
- *           type: integer
- *           default: 1
- *         description: Page number (1-indexed)
+ *           type: string
+ *         description: Pagination cursor (base64 encoded)
  *       - in: query
  *         name: limit
  *         schema:
@@ -34,89 +42,20 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: Paginated webhook logs
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 logs:
- *                   type: array
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     page:
- *                       type: integer
- *                     limit:
- *                       type: integer
- *                     total:
- *                       type: integer
- *                     totalPages:
- *                       type: integer
+ *       401:
+ *         description: Unauthorized - invalid or missing API key
+ *       500:
+ *         description: Server error
  */
-router.get("/webhooks/logs", async (req, res, next) => {
+router.get("/webhook-logs", async (req, res, next) => {
   try {
-    const merchantId = req.merchant.id;
-    
-    // Parse pagination params
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const offset = (page - 1) * limit;
-    
-    // Build query
-    let query = supabase
-      .from("webhook_delivery_logs")
-      .select(`
-        id,
-        payment_id,
-        status_code,
-        response_body,
-        timestamp,
-        payments!inner(merchant_id, amount, asset, status)
-      `, { count: 'exact' })
-      .eq("payments.merchant_id", merchantId)
-      .order("timestamp", { ascending: false });
-    
-    // Filter by status if provided
-    if (req.query.status === 'success') {
-      query = query.gte("status_code", 200).lt("status_code", 300);
-    } else if (req.query.status === 'failure') {
-      query = query.or("status_code.lt.200,status_code.gte.300");
-    }
-    
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1);
-    
-    const { data: logsData, error, count } = await query;
-    
-    if (error) {
-      error.status = 500;
-      throw error;
-    }
-    
-    // Format response
-    const logs = logsData.map(log => ({
-      id: log.id,
-      payment_id: log.payment_id,
-      status_code: log.status_code,
-      success: log.status_code >= 200 && log.status_code < 300,
-      response_body: log.response_body,
-      timestamp: log.timestamp,
-      payment: {
-        amount: log.payments.amount,
-        asset: log.payments.asset,
-        status: log.payments.status
-      }
-    }));
-    
-    res.json({
-      logs,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+    const { cursor, limit, status } = req.query;
+    const result = await merchantService.getWebhookLogs(req.merchant.id, {
+      cursor,
+      limit,
+      status,
     });
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -182,6 +121,21 @@ router.get("/notifications", requireApiKeyAuth(), async (req, res, next) => {
       }] : [],
       unreadCount: (count || 0) > 5 ? 1 : 0
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/webhooks/retry-bulk", async (req, res, next) => {
+  try {
+    const body = bulkRetrySchema.parse(req.body || {});
+    const result = await queueBulkWebhookRetries({
+      db: req.app.locals.pool,
+      merchantId: req.merchant.id,
+      logIds: body.log_ids,
+    });
+
+    res.json(result);
   } catch (err) {
     next(err);
   }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
 import toast from "react-hot-toast";
+import DangerZone from "@/components/DangerZone";
 import {
   useHydrateMerchantStore,
   useMerchantApiKey,
@@ -19,7 +20,17 @@ const DEFAULT_BRANDING = {
   background_color: "#050608",
 };
 
-type SettingsTab = "api" | "branding" | "webhooks";
+type SettingsTab = "api" | "branding" | "webhooks" | "danger";
+
+interface WebhookDomainVerification {
+  status: "verified" | "unverified";
+  domain: string | null;
+  verification_token: string | null;
+  verification_file_url: string | null;
+  checked_at: string | null;
+  verified_at: string | null;
+  failure_reason: string | null;
+}
 
 function normalizeHexInput(value: string) {
   const trimmed = value.trim();
@@ -28,9 +39,13 @@ function normalizeHexInput(value: string) {
 
 function hexToRgb(hex: string) {
   const clean = hex.replace("#", "");
-  const full = clean.length === 3
-    ? clean.split("").map((c) => `${c}${c}`).join("")
-    : clean;
+  const full =
+    clean.length === 3
+      ? clean
+        .split("")
+        .map((c) => `${c}${c}`)
+        .join("")
+      : clean;
   const int = Number.parseInt(full, 16);
 
   return {
@@ -140,8 +155,10 @@ export default function SettingsPage() {
   const [regeneratingSecret, setRegeneratingSecret] = useState(false);
   const [confirmRegenSecret, setConfirmRegenSecret] = useState(false);
   const [webhookRevealedSecret, setWebhookRevealedSecret] = useState(false);
-  
   const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookVerification, setWebhookVerification] =
+    useState<WebhookDomainVerification | null>(null);
+  const [verifyingWebhookDomain, setVerifyingWebhookDomain] = useState(false);
 
   useHydrateMerchantStore();
 
@@ -159,7 +176,8 @@ export default function SettingsPage() {
         if (!res.ok) throw new Error(data.error ?? "Failed to load branding");
         setBranding(data.branding_config ?? DEFAULT_BRANDING);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Failed to load branding";
+        const msg =
+          err instanceof Error ? err.message : "Failed to load branding";
         setBrandingError(msg);
       } finally {
         setLoadingBranding(false);
@@ -244,7 +262,8 @@ export default function SettingsPage() {
       setBranding(data.branding_config ?? branding);
       toast.success("Branding saved");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save branding";
+      const msg =
+        err instanceof Error ? err.message : "Failed to save branding";
       setBrandingError(msg);
       toast.error(msg);
     } finally {
@@ -264,11 +283,16 @@ export default function SettingsPage() {
           headers: { "x-api-key": apiKey },
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to load webhook settings");
+        if (!res.ok)
+          throw new Error(data.error ?? "Failed to load webhook settings");
         setWebhookUrl(data.webhook_url ?? "");
         setWebhookSecretMasked(data.webhook_secret_masked ?? "");
+        setWebhookVerification(data.webhook_domain_verification ?? null);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Failed to load webhook settings";
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Failed to load webhook settings";
         setWebhookSaveError(msg);
       } finally {
         setLoadingWebhook(false);
@@ -318,13 +342,48 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save webhook URL");
       setWebhookUrl(data.webhook_url ?? "");
-      toast.success(data.webhook_url ? "Webhook URL saved" : "Webhook URL cleared");
+      setWebhookVerification(data.webhook_domain_verification ?? null);
+      toast.success(
+        data.webhook_url ? "Webhook URL saved" : "Webhook URL cleared",
+      );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save webhook URL";
+      const msg =
+        err instanceof Error ? err.message : "Failed to save webhook URL";
       setWebhookSaveError(msg);
       toast.error(msg);
     } finally {
       setSavingWebhook(false);
+    }
+  };
+
+  const verifyWebhookDomain = async () => {
+    if (!apiKey) return;
+
+    setVerifyingWebhookDomain(true);
+    setWebhookSaveError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/webhook-settings/verify`, {
+        method: "POST",
+        headers: { "x-api-key": apiKey },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to verify webhook domain");
+      }
+
+      setWebhookVerification(data.webhook_domain_verification ?? null);
+      toast.success(
+        data.webhook_domain_verification?.status === "verified"
+          ? "Webhook domain verified"
+          : "Webhook domain is still unverified",
+      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to verify webhook domain";
+      setWebhookSaveError(msg);
+      toast.error(msg);
+    } finally {
+      setVerifyingWebhookDomain(false);
     }
   };
 
@@ -345,7 +404,8 @@ export default function SettingsPage() {
       setConfirmRegenSecret(false);
       toast.success("Webhook secret regenerated — update your integrations.");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to regenerate secret";
+      const msg =
+        err instanceof Error ? err.message : "Failed to regenerate secret";
       setWebhookSaveError(msg);
       toast.error(msg);
     } finally {
@@ -425,6 +485,10 @@ export default function SettingsPage() {
   );
   const lowContrastWarning =
     primaryOnBackground < 4.5 || secondaryOnBackground < 3;
+  const webhookStatusTone =
+    webhookVerification?.status === "verified"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+      : "border-yellow-500/30 bg-yellow-500/10 text-yellow-200";
 
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-10 px-6 py-16">
@@ -446,162 +510,172 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setActiveTab("api")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${
-              activeTab === "api"
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "api"
                 ? "bg-white text-black"
                 : "text-slate-300 hover:bg-white/10"
-            }`}
+              }`}
           >
             API Keys
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("branding")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${
-              activeTab === "branding"
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "branding"
                 ? "bg-white text-black"
                 : "text-slate-300 hover:bg-white/10"
-            }`}
+              }`}
           >
             Branding
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("webhooks")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${
-              activeTab === "webhooks"
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "webhooks"
                 ? "bg-white text-black"
                 : "text-slate-300 hover:bg-white/10"
-            }`}
+              }`}
           >
             Webhooks
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("danger")}
+            className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "danger"
+                ? "bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+                : "text-red-400/70 hover:bg-red-500/10"
+              }`}
+          >
+            Danger
+          </button>
         </div>
 
-        {activeTab === "api" && <div className="flex flex-col gap-8">
-          {/* API Key section */}
-          <section className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                API Key
-              </h2>
-              <button
-                type="button"
-                onClick={() => setRevealed((v) => !v)}
-                aria-label={revealed ? "Hide API key" : "Reveal API key"}
-                className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
-              >
-                <EyeIcon open={revealed} />
-                {revealed ? "Hide" : "Reveal"}
-              </button>
-            </div>
+        {activeTab === "api" && (
+          <div className="flex flex-col gap-8">
+            {/* API Key section */}
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                  API Key
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setRevealed((v) => !v)}
+                  aria-label={revealed ? "Hide API key" : "Reveal API key"}
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+                >
+                  <EyeIcon open={revealed} />
+                  {revealed ? "Hide" : "Reveal"}
+                </button>
+              </div>
 
-            <div className="flex items-center gap-2 overflow-hidden rounded-xl border border-white/10 bg-black/40 p-1 pl-4">
-              <code
-                className={`flex-1 truncate font-mono text-sm transition-colors ${
-                  revealed ? "text-mint" : "text-slate-500"
-                }`}
-              >
-                {displayKey}
-              </code>
-              {/* Only allow copying when revealed to prevent accidental exposure */}
-              {revealed && <CopyButton text={apiKey} />}
-            </div>
+              <div className="flex items-center gap-2 overflow-hidden rounded-xl border border-white/10 bg-black/40 p-1 pl-4">
+                <code
+                  className={`flex-1 truncate font-mono text-sm transition-colors ${revealed ? "text-mint" : "text-slate-500"
+                    }`}
+                >
+                  {displayKey}
+                </code>
+                {/* Only allow copying when revealed to prevent accidental exposure */}
+                {revealed && <CopyButton text={apiKey} />}
+              </div>
 
-            <p className="text-[11px] text-slate-600">
-              Pass this as the <code className="text-slate-500">x-api-key</code>{" "}
-              header on every API request.
-            </p>
-          </section>
-
-          {/* Divider */}
-          <div className="h-px bg-white/10" />
-
-          {/* Rotate Key section */}
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                Rotate API Key
-              </h2>
-              <p className="text-sm text-slate-500">
-                Generates a new key and immediately invalidates the current one.
-                Any integration still using the old key will stop working.
+              <p className="text-[11px] text-slate-600">
+                Pass this as the{" "}
+                <code className="text-slate-500">x-api-key</code> header on
+                every API request.
               </p>
-            </div>
+            </section>
 
-            {rotateError && (
-              <div
-                role="alert"
-                className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400"
-              >
-                {rotateError}
+            {/* Divider */}
+            <div className="h-px bg-white/10" />
+
+            {/* Rotate Key section */}
+            <section className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                  Rotate API Key
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Generates a new key and immediately invalidates the current
+                  one. Any integration still using the old key will stop
+                  working.
+                </p>
               </div>
-            )}
 
-            {!confirming ? (
-              <button
-                type="button"
-                onClick={startRotate}
-                className="flex h-11 items-center justify-center rounded-xl border border-red-500/40 bg-red-500/10 px-5 text-sm font-semibold text-red-400 transition-all hover:border-red-500/70 hover:bg-red-500/20"
-              >
-                Rotate Key…
-              </button>
-            ) : (
-              <div className="flex flex-col gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
-                <p className="text-sm font-medium text-yellow-200">
-                  Are you sure? This cannot be undone.
-                </p>
-                <p className="text-xs text-slate-400">
-                  The old key will stop working immediately. Make sure to update
-                  all your integrations with the new key.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={confirmRotate}
-                    disabled={rotating}
-                    className="group relative flex flex-1 h-10 items-center justify-center rounded-xl bg-mint font-bold text-black text-sm transition-all hover:bg-glow disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {rotating ? (
-                      <span className="flex items-center gap-2">
-                        <svg
-                          className="h-4 w-4 animate-spin"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                            fill="none"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          />
-                        </svg>
-                        Rotating…
-                      </span>
-                    ) : (
-                      "Yes, rotate key"
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelRotate}
-                    disabled={rotating}
-                    className="flex flex-1 h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-slate-300 transition-all hover:bg-white/10 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
+              {rotateError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400"
+                >
+                  {rotateError}
                 </div>
-              </div>
-            )}
-          </section>
-        </div>}
+              )}
+
+              {!confirming ? (
+                <button
+                  type="button"
+                  onClick={startRotate}
+                  className="flex h-11 items-center justify-center rounded-xl border border-red-500/40 bg-red-500/10 px-5 text-sm font-semibold text-red-400 transition-all hover:border-red-500/70 hover:bg-red-500/20"
+                >
+                  Rotate Key…
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4">
+                  <p className="text-sm font-medium text-yellow-200">
+                    Are you sure? This cannot be undone.
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    The old key will stop working immediately. Make sure to
+                    update all your integrations with the new key.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={confirmRotate}
+                      disabled={rotating}
+                      className="group relative flex flex-1 h-10 items-center justify-center rounded-xl bg-mint font-bold text-black text-sm transition-all hover:bg-glow disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {rotating ? (
+                        <span className="flex items-center gap-2">
+                          <svg
+                            className="h-4 w-4 animate-spin"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                              fill="none"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            />
+                          </svg>
+                          Rotating…
+                        </span>
+                      ) : (
+                        "Yes, rotate key"
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelRotate}
+                      disabled={rotating}
+                      className="flex flex-1 h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-slate-300 transition-all hover:bg-white/10 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
 
         {activeTab === "branding" && (
           <section className="flex flex-col gap-5">
@@ -610,7 +684,8 @@ export default function SettingsPage() {
                 Checkout Branding
               </h2>
               <p className="text-sm text-slate-500">
-                Set default checkout colors. These values are exposed as CSS variables and can be overridden per session.
+                Set default checkout colors. These values are exposed as CSS
+                variables and can be overridden per session.
               </p>
             </div>
 
@@ -621,16 +696,19 @@ export default function SettingsPage() {
             )}
             {lowContrastWarning && (
               <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-100">
-                Selected colors may not meet WCAG contrast targets (4.5:1 for body text). Consider adjusting primary or background colors.
+                Selected colors may not meet WCAG contrast targets (4.5:1 for
+                body text). Consider adjusting primary or background colors.
               </div>
             )}
 
             <div className="grid gap-4">
-              {([
-                ["primary_color", "Primary Color"],
-                ["secondary_color", "Secondary Color"],
-                ["background_color", "Background Color"],
-              ] as const).map(([field, label]) => (
+              {(
+                [
+                  ["primary_color", "Primary Color"],
+                  ["secondary_color", "Secondary Color"],
+                  ["background_color", "Background Color"],
+                ] as const
+              ).map(([field, label]) => (
                 <label key={field} className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
                     {label}
@@ -639,13 +717,17 @@ export default function SettingsPage() {
                     <input
                       type="color"
                       value={branding[field]}
-                      onChange={(e) => updateBrandingField(field, e.target.value)}
+                      onChange={(e) =>
+                        updateBrandingField(field, e.target.value)
+                      }
                       className="h-10 w-16 rounded border border-white/10 bg-transparent p-1"
                     />
                     <input
                       type="text"
                       value={branding[field]}
-                      onChange={(e) => updateBrandingField(field, e.target.value)}
+                      onChange={(e) =>
+                        updateBrandingField(field, e.target.value)
+                      }
                       className="flex-1 rounded-xl border border-white/10 bg-black/40 p-2 font-mono text-sm text-white"
                     />
                   </div>
@@ -657,17 +739,28 @@ export default function SettingsPage() {
               className="rounded-2xl border border-white/10 p-5"
               style={{ background: branding.background_color }}
             >
-              <p className="mb-3 text-xs uppercase tracking-[0.2em]" style={{ color: branding.secondary_color }}>
+              <p
+                className="mb-3 text-xs uppercase tracking-[0.2em]"
+                style={{ color: branding.secondary_color }}
+              >
                 Preview
               </p>
-              <div className="rounded-xl border p-4" style={{ borderColor: `${branding.secondary_color}66` }}>
-                <p style={{ color: branding.secondary_color }}>Sample checkout card</p>
+              <div
+                className="rounded-xl border p-4"
+                style={{ borderColor: `${branding.secondary_color}66` }}
+              >
+                <p style={{ color: branding.secondary_color }}>
+                  Sample checkout card
+                </p>
                 <button
                   type="button"
                   className="mt-3 rounded-lg px-4 py-2 font-semibold"
                   style={{
                     background: branding.primary_color,
-                    color: contrastRatio(branding.primary_color, "#000000") > 5 ? "#000000" : "#ffffff",
+                    color:
+                      contrastRatio(branding.primary_color, "#000000") > 5
+                        ? "#000000"
+                        : "#ffffff",
                   }}
                 >
                   Pay Now
@@ -681,7 +774,11 @@ export default function SettingsPage() {
               disabled={loadingBranding || savingBranding}
               className="h-11 rounded-xl bg-mint font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {savingBranding ? "Saving..." : loadingBranding ? "Loading..." : "Save Branding"}
+              {savingBranding
+                ? "Saving..."
+                : loadingBranding
+                  ? "Loading..."
+                  : "Save Branding"}
             </button>
           </section>
         )}
@@ -691,12 +788,23 @@ export default function SettingsPage() {
             {/* Webhook Endpoint section */}
             <section className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <h2 className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                  Webhook Endpoint
-                </h2>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-xs font-medium uppercase tracking-wider text-slate-400">
+                    Webhook Endpoint
+                  </h2>
+                  {webhookUrl && (
+                    <span
+                      className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] ${webhookStatusTone}`}
+                    >
+                      {webhookVerification?.status === "verified"
+                        ? "Verified"
+                        : "Unverified"}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-slate-500">
-                  Events like payment confirmations will be sent as POST requests
-                  to this URL. Must use HTTPS.
+                  Events like payment confirmations will be sent as POST
+                  requests to this URL. Must use HTTPS.
                 </p>
               </div>
 
@@ -716,12 +824,13 @@ export default function SettingsPage() {
                   onChange={(e) => handleWebhookUrlChange(e.target.value)}
                   placeholder="https://example.com/webhooks/stellar"
                   aria-invalid={!!webhookUrlError}
-                  aria-describedby={webhookUrlError ? "webhook-url-error" : undefined}
-                  className={`w-full rounded-xl border bg-black/40 p-3 font-mono text-sm text-white placeholder-slate-600 outline-none transition-colors focus:ring-1 ${
-                    webhookUrlError
+                  aria-describedby={
+                    webhookUrlError ? "webhook-url-error" : undefined
+                  }
+                  className={`w-full rounded-xl border bg-black/40 p-3 font-mono text-sm text-white placeholder-slate-600 outline-none transition-colors focus:ring-1 ${webhookUrlError
                       ? "border-red-500/50 focus:border-red-500 focus:ring-red-500/30"
                       : "border-white/10 focus:border-mint/50 focus:ring-mint/20"
-                  }`}
+                    }`}
                 />
                 {webhookUrlError && (
                   <p
@@ -767,6 +876,77 @@ export default function SettingsPage() {
                   {testingWebhook ? "Testing…" : "Send Test Webhook"}
                 </button>
               </div>
+
+              {webhookUrl && webhookVerification && (
+                <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-semibold text-white">
+                      Domain verification
+                    </p>
+                    <p className="text-sm text-slate-400">
+                      Host the token below at{" "}
+                      <code className="text-slate-300">
+                        {webhookVerification.verification_file_url}
+                      </code>{" "}
+                      and then verify the domain.
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2 overflow-hidden rounded-xl border border-white/10 bg-black/40 p-1 pl-4">
+                    <code className="flex-1 truncate font-mono text-sm text-slate-300">
+                      {webhookVerification.verification_token ?? "—"}
+                    </code>
+                    {webhookVerification.verification_token && (
+                      <CopyButton text={webhookVerification.verification_token} />
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-2 text-xs text-slate-500">
+                    <p>
+                      Domain:{" "}
+                      <span className="font-mono text-slate-300">
+                        {webhookVerification.domain ?? "—"}
+                      </span>
+                    </p>
+                    {webhookVerification.checked_at && (
+                      <p>
+                        Last checked:{" "}
+                        <span className="text-slate-300">
+                          {new Date(
+                            webhookVerification.checked_at,
+                          ).toLocaleString()}
+                        </span>
+                      </p>
+                    )}
+                    {webhookVerification.verified_at && (
+                      <p>
+                        Verified at:{" "}
+                        <span className="text-slate-300">
+                          {new Date(
+                            webhookVerification.verified_at,
+                          ).toLocaleString()}
+                        </span>
+                      </p>
+                    )}
+                    {webhookVerification.failure_reason && (
+                      <p className="text-red-400">
+                        {webhookVerification.failure_reason}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={verifyWebhookDomain}
+                    disabled={
+                      savingWebhook || loadingWebhook || verifyingWebhookDomain
+                    }
+                    className="mt-4 h-11 rounded-xl border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {verifyingWebhookDomain ? "Verifying…" : "Verify Domain"}
+                  </button>
+                </div>
+              )}
             </section>
 
             {/* Divider */}
@@ -780,8 +960,9 @@ export default function SettingsPage() {
                 </h2>
                 <p className="text-sm text-slate-500">
                   Used to verify that webhook payloads are from Stellar Pay.
-                  Validate the <code className="text-slate-400">Stellar-Signature</code> header
-                  against this secret.
+                  Validate the{" "}
+                  <code className="text-slate-400">Stellar-Signature</code>{" "}
+                  header against this secret.
                 </p>
               </div>
 
@@ -812,7 +993,8 @@ export default function SettingsPage() {
               {webhookNewSecret && (
                 <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3">
                   <p className="text-xs text-yellow-200">
-                    Copy this secret now — it won&apos;t be shown again after you leave this page.
+                    Copy this secret now — it won&apos;t be shown again after
+                    you leave this page.
                   </p>
                 </div>
               )}
@@ -887,6 +1069,8 @@ export default function SettingsPage() {
             </section>
           </div>
         )}
+
+        {activeTab === "danger" && <DangerZone apiKey={apiKey} />}
       </div>
 
       {/* Footer nav */}

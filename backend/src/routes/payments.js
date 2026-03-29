@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import { paymentService } from "../services/paymentService.js";
@@ -11,10 +12,13 @@ import {
 } from "../lib/request-schemas.js";
 import { validateRequest } from "../lib/validation.js";
 import { createCreatePaymentRateLimit } from "../lib/create-payment-rate-limit.js";
+import { recaptchaMiddleware } from "../lib/recaptcha.js";
 import { sendWebhook } from "../lib/webhooks.js";
 import { sendReceiptEmail } from "../lib/email.js";
 import { renderReceiptEmail } from "../lib/email-templates.js";
 import { resolveBrandingConfig } from "../lib/branding.js";
+import { generatePaginationLinks } from "../lib/pagination-links.js";
+
 import {
   connectRedisClient,
   getCachedPayment,
@@ -22,12 +26,21 @@ import {
   invalidatePaymentCache,
 } from "../lib/redis.js";
 import { getPayloadForVersion } from "../webhooks/resolver.js";
+import { streamManager } from "../lib/stream-manager.js";
 import {
   paymentCreatedCounter,
   paymentConfirmedCounter,
   paymentConfirmationLatency,
+  paymentFailedCounter,
 } from "../lib/metrics.js";
 import { sanitizeMetadataMiddleware } from "../lib/sanitize-metadata.js";
+import { supabase } from "../lib/supabase.js";
+import {
+  findMatchingPayment,
+  findStrictReceivePaths,
+  getNetworkFeeStats,
+} from "../lib/stellar.js";
+
 
 const createPaymentRateLimit = createCreatePaymentRateLimit();
 
@@ -38,6 +51,36 @@ const defaultVerifyPaymentRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
+
+function applyPaymentFilters(query, req) {
+  const { status, asset, date_from: dateFrom, date_to: dateTo, search } = req.query || {};
+
+  if (typeof status === "string" && status.length > 0) {
+    query = query.eq("status", status);
+  }
+  if (typeof asset === "string" && asset.length > 0) {
+    query = query.eq("asset", asset);
+  }
+  if (typeof dateFrom === "string" && dateFrom.length > 0) {
+    query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
+  }
+  if (typeof dateTo === "string" && dateTo.length > 0) {
+    query = query.lte("created_at", `${dateTo}T23:59:59.999Z`);
+  }
+  if (typeof search === "string" && search.trim().length > 0) {
+    const term = search.trim().replaceAll(",", "\\,");
+    let orQuery = `id.ilike.%${term}%,description.ilike.%${term}%,recipient.ilike.%${term}%`;
+    const numTerm = Number(term);
+    if (!isNaN(numTerm)) {
+      orQuery += `,amount.eq.${numTerm}`;
+    }
+    query = query.or(orQuery);
+  }
+  return query;
+}
+
 
 function createPaymentsRouter({
   verifyPaymentRateLimit = defaultVerifyPaymentRateLimit,
@@ -85,6 +128,9 @@ function createPaymentsRouter({
    *                 enum: [text, id, hash, return]
    *               webhook_url:
    *                 type: string
+   *               client_id:
+   *                 type: string
+   *                 description: Merchant-defined client/store identifier for segmentation
    *               branding_overrides:
    *                 type: object
    *                 properties:
@@ -199,6 +245,7 @@ function createPaymentsRouter({
         memo: body.memo || null,
         memo_type: body.memo_type || null,
         webhook_url: body.webhook_url || null,
+        client_id: body.client_id || null,
         status: "pending",
         tx_id: null,
         metadata,
@@ -231,7 +278,7 @@ function createPaymentsRouter({
     }
   }
 
-  router.post("/create-payment", createPaymentRateLimit, validateRequest({ body: paymentSessionZodSchema }), sanitizeMetadataMiddleware, createSession);
+  router.post("/create-payment", createPaymentRateLimit, recaptchaMiddleware(), validateRequest({ body: paymentSessionZodSchema }), sanitizeMetadataMiddleware, createSession);
   router.post("/sessions", createPaymentRateLimit, validateRequest({ body: paymentSessionZodSchema }), sanitizeMetadataMiddleware, createSession);
 
   /**
@@ -318,6 +365,50 @@ function createPaymentsRouter({
 
   /**
    * @swagger
+   * /api/stream/{id}:
+   *   get:
+   *     summary: Subscribe to real-time status updates for a payment
+   *     tags: [Payments]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Payment ID
+   *     responses:
+   *       200:
+   *         description: SSE stream
+   */
+  router.get("/stream/:id", validateUuidParam(), (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    streamManager.addClient(req.params.id, res);
+  });
+
+  router.get("/network-fee", async (req, res, next) => {
+    try {
+      const fee = await getNetworkFeeStats(1);
+      res.json({
+        network_fee: {
+          network: fee.network,
+          horizon_url: fee.horizonUrl,
+          operation_count: fee.operationCount,
+          stroops: fee.totalFeeStroops,
+          xlm: fee.totalFeeXlm,
+          last_ledger_base_fee: fee.lastLedgerBaseFee,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * @swagger
    * /api/verify-payment/{id}:
    *   post:
    *     summary: Verify a payment on the Stellar network
@@ -332,7 +423,7 @@ function createPaymentsRouter({
         let query = supabase
           .from("payments")
           .select(
-            "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, merchants(webhook_secret, webhook_version, notification_email, email)"
+            "id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, merchants(webhook_secret, webhook_version, webhook_custom_headers, notification_email, email, business_name)"
           );
 
         if (req.merchant?.id) {
@@ -340,6 +431,7 @@ function createPaymentsRouter({
         }
 
         const { data, error } = await query
+
           .eq("id", req.params.id)
           .is("deleted_at", null)
           .maybeSingle();
@@ -414,6 +506,12 @@ function createPaymentsRouter({
           });
         }
 
+        // Notify customer via SSE (issue #89)
+        streamManager.notify(data.id, "payment.confirmed", {
+          status: "confirmed",
+          tx_id: match.transaction_hash,
+        });
+
         const merchantSecret = data.merchants?.webhook_secret;
         const merchantVersion = data.merchants?.webhook_version || "v1";
 
@@ -429,12 +527,22 @@ function createPaymentsRouter({
             tx_id: match.transaction_hash,
           }
         );
-
         const webhookResult = await sendWebhook(
           data.webhook_url,
           webhookPayload,
-          merchantSecret
+          merchantSecret,
+          data.id,
+          data.merchants?.webhook_custom_headers ?? {}
         );
+        sendReceiptEmail({
+          to: data.merchants?.notification_email,
+          businessName: data.merchants?.business_name || "Merchant",
+          amount: data.amount,
+          asset: data.asset,
+          recipient: data.recipient,
+          txId: match.transaction_hash,
+          paymentId: data.id,
+        });
 
         if (!webhookResult.ok && !webhookResult.skipped) {
           console.warn("Webhook failed", webhookResult);
@@ -500,6 +608,11 @@ function createPaymentsRouter({
    *           type: integer
    *           default: 10
    *         description: Number of results per page (max 100)
+   *       - in: query
+   *         name: client_id
+   *         schema:
+   *           type: string
+   *         description: Filter payments by merchant-defined client identifier
    *     responses:
    *       200:
    *         description: Paginated payments
@@ -520,13 +633,30 @@ function createPaymentsRouter({
    *                   type: integer
    *                 limit:
    *                   type: integer
+   *                 links:
+   *                   type: object
+   *                   properties:
+   *                     next:
+   *                       type: string
+   *                       description: URL to the next page
+   *                     previous:
+   *                       type: string
+   *                       description: URL to the previous page
    *       401:
    *         description: Missing or invalid API key
    */
   router.get("/payments", validateRequest({ query: paginationQuerySchema }), async (req, res, next) => {
     try {
-      let page = req.query.page;
-      let limit = req.query.limit;
+      let page = parseInt(req.query.page, 10) || 1;
+      let limit = parseInt(req.query.limit, 10) || 10;
+      const clientId =
+        typeof req.query.client_id === "string" && req.query.client_id.trim()
+          ? req.query.client_id.trim()
+          : null;
+
+      if (page < 1) page = 1;
+      if (limit < 1) limit = 1;
+      if (limit > 100) limit = 100;
 
       const offset = (page - 1) * limit;
 
@@ -534,6 +664,10 @@ function createPaymentsRouter({
         .from("payments")
         .select("*", { count: "exact", head: true })
         .eq("merchant_id", req.merchant.id);
+      if (clientId) {
+        countQuery = countQuery.eq("client_id", clientId);
+      }
+      const { count: totalCount, error: countError } = await countQuery;
 
       countQuery = applyPaymentFilters(countQuery, req);
 
@@ -547,15 +681,17 @@ function createPaymentsRouter({
       let dataQuery = supabase
         .from("payments")
         .select(
-          "id, amount, asset, asset_issuer, recipient, description, status, tx_id, created_at"
+          "id, amount, asset, asset_issuer, recipient, description, client_id, status, tx_id, created_at",
         )
-        .eq("merchant_id", req.merchant.id);
-
-      dataQuery = applyPaymentFilters(dataQuery, req);
-
-      const { data: payments, error: dataError } = await dataQuery
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1);
+        .eq("merchant_id", req.merchant.id)
+        .order("created_at", { ascending: false });
+      if (clientId) {
+        dataQuery = dataQuery.eq("client_id", clientId);
+      }
+      const { data: payments, error: dataError } = await dataQuery.range(
+        offset,
+        offset + limit - 1,
+      );
 
       if (dataError) {
         dataError.status = 500;
@@ -570,6 +706,7 @@ function createPaymentsRouter({
         total_pages: totalPages,
         page,
         limit,
+        ...generatePaginationLinks(req, page, limit, totalPages),
       });
     } catch (err) {
       next(err);
@@ -812,8 +949,6 @@ function createPaymentsRouter({
    *       502:
    *         description: Anchor request failed
    */
-   *     tags: [Payments]
-   */
   router.get(
     "/path-payment-quote/:id",
     validateUuidParam(),
@@ -834,6 +969,7 @@ function createPaymentsRouter({
 
         const { data, error } = await query
           .eq("id", req.params.id)
+          .is("deleted_at", null)
           .maybeSingle();
 
         if (error) {
@@ -843,6 +979,17 @@ function createPaymentsRouter({
 
         if (!data) {
           return res.status(404).json({ error: "Payment not found" });
+        }
+
+        const sameAsset =
+          sourceAsset.toUpperCase() === data.asset.toUpperCase() &&
+          sourceAssetIssuer === (data.asset_issuer || null);
+
+        if (sameAsset) {
+          return res.status(400).json({
+            error:
+              "Source asset is the same as destination asset. Use a direct payment.",
+          });
         }
 
         const quote = await findStrictReceivePaths({

@@ -49,13 +49,13 @@ describe("validateMemo", () => {
     it("should reject negative numbers", () => {
       const result = validateMemo("-1", "id");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("numeric string");
+      expect(result.error).toContain("memo must be a valid unsigned 64-bit integer when memo_type is id");
     });
 
     it("should reject non-numeric strings", () => {
       const result = validateMemo("abc123", "id");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("numeric string");
+      expect(result.error).toContain("memo must be a valid unsigned 64-bit integer when memo_type is id");
     });
 
     it("should reject numbers over 64-bit limit", () => {
@@ -67,7 +67,7 @@ describe("validateMemo", () => {
     it("should reject decimal numbers", () => {
       const result = validateMemo("123.45", "id");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("numeric string");
+      expect(result.error).toContain("memo must be a valid unsigned 64-bit integer when memo_type is id");
     });
   });
 
@@ -87,20 +87,20 @@ describe("validateMemo", () => {
     it("should reject hash memos shorter than 64 characters", () => {
       const result = validateMemo("a".repeat(63), "hash");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("exactly 64 hexadecimal characters");
+      expect(result.error).toContain("memo must be a 32-byte hex string (64 characters) when memo_type is hash");
     });
 
     it("should reject hash memos longer than 64 characters", () => {
       const result = validateMemo("a".repeat(65), "hash");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("exactly 64 hexadecimal characters");
+      expect(result.error).toContain("memo must be a 32-byte hex string (64 characters) when memo_type is hash");
     });
 
     it("should reject non-hex characters", () => {
       const invalidHash = "g".repeat(64);
       const result = validateMemo(invalidHash, "hash");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("hexadecimal characters");
+      expect(result.error).toContain("memo must be a 32-byte hex string (64 characters) when memo_type is hash");
     });
 
     it("should reject hash with spaces", () => {
@@ -109,7 +109,7 @@ describe("validateMemo", () => {
         "hash",
       );
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("hexadecimal characters");
+      expect(result.error).toContain("memo must be a 32-byte hex string (64 characters) when memo_type is hash");
     });
   });
 
@@ -120,23 +120,23 @@ describe("validateMemo", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("should reject return memos shorter than 64 characters", () => {
-      const result = validateMemo("0".repeat(63), "return");
+    it("should reject non-numeric return memos shorter than 64 characters", () => {
+      const result = validateMemo("x".repeat(10), "return");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("exactly 64 hexadecimal characters");
+      expect(result.error).toContain("memo must be a valid unsigned 64-bit integer or a 32-byte hex string (64 characters) when memo_type is return");
     });
 
-    it("should reject return memos longer than 64 characters", () => {
-      const result = validateMemo("0".repeat(65), "return");
+    it("should reject return memos longer than 64 characters (and not a valid ID)", () => {
+      const result = validateMemo("a".repeat(65), "return");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("exactly 64 hexadecimal characters");
+      expect(result.error).toContain("memo must be a valid unsigned 64-bit integer or a 32-byte hex string (64 characters) when memo_type is return");
     });
 
-    it("should reject non-hex characters", () => {
-      const invalidReturn = "xyz" + "0".repeat(61);
+    it("should reject non-hex return characters (if not a valid ID)", () => {
+      const invalidReturn = "g".repeat(64);
       const result = validateMemo(invalidReturn, "return");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("hexadecimal characters");
+      expect(result.error).toContain("memo must be a valid unsigned 64-bit integer or a 32-byte hex string (64 characters) when memo_type is return");
     });
   });
 

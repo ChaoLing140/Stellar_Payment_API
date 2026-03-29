@@ -5,7 +5,12 @@ import { ReactNode } from "react";
 
 export default function ThemeProvider({ children }: { children: ReactNode }) {
   return (
-    <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
+    <NextThemesProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem={true}
+      storageKey="merchant-theme-preference"
+    >
       {children}
     </NextThemesProvider>
   );

@@ -11,6 +11,15 @@ const HORIZON_URL =
 const server = new StellarSdk.Horizon.Server(HORIZON_URL);
 const HORIZON_HEALTH_TIMEOUT_MS = 2_000;
 
+function parseStroops(value) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function stroopsToXlm(stroops) {
+  return (stroops / 10_000_000).toFixed(7);
+}
+
 /**
  * Validates Stellar memo format based on memo type
  * @param {string} memo - The memo value
@@ -40,7 +49,7 @@ export function validateMemo(memo, memoType) {
       if (!/^\d+$/.test(memo)) {
         return {
           valid: false,
-          error: "ID memo must be a numeric string containing only digits",
+          error: "memo must be a valid unsigned 64-bit integer when memo_type is id",
         };
       }
       try {
@@ -60,12 +69,33 @@ export function validateMemo(memo, memoType) {
       return { valid: true };
 
     case "hash":
-    case "return":
-      // HASH and RETURN memos must be exactly 32 bytes (64 hex characters)
+      // HASH memos must be exactly 32 bytes (64 hex characters)
       if (!/^[0-9a-fA-F]{64}$/.test(memo)) {
         return {
           valid: false,
-          error: `${normalizedType.toUpperCase()} memo must be exactly 64 hexadecimal characters (32 bytes)`,
+          error: "memo must be a 32-byte hex string (64 characters) when memo_type is hash",
+        };
+      }
+      return { valid: true };
+
+    case "return":
+      // RETURN memos can be either 32-byte hex or a valid unsigned 64-bit ID
+      const isHex = /^[0-9a-fA-F]{64}$/.test(memo);
+      let isValidId = false;
+
+      if (/^\d+$/.test(memo)) {
+        try {
+          const val = BigInt(memo);
+          isValidId = val >= 0n && val <= 18446744073709551615n;
+        } catch {
+          isValidId = false;
+        }
+      }
+
+      if (!isHex && !isValidId) {
+        return {
+          valid: false,
+          error: "memo must be a valid unsigned 64-bit integer or a 32-byte hex string (64 characters) when memo_type is return",
         };
       }
       return { valid: true };
@@ -399,6 +429,39 @@ export async function createRefundTransaction({
     };
   } catch (err) {
     throw handleHorizonError(err, sourceAccount);
+  }
+}
+
+export async function getNetworkFeeStats(operationCount = 1) {
+  try {
+    const safeOperationCount =
+      Number.isInteger(operationCount) && operationCount > 0
+        ? operationCount
+        : 1;
+    const feeStats = await server.feeStats();
+    const lastLedgerBaseFee = parseStroops(feeStats.last_ledger_base_fee);
+    const chargedMode = parseStroops(feeStats.fee_charged?.mode);
+    const chargedP50 = parseStroops(feeStats.fee_charged?.p50);
+    const recommendedFeeStroops = Math.max(
+      lastLedgerBaseFee,
+      chargedMode,
+      chargedP50,
+    );
+    const totalFeeStroops = recommendedFeeStroops * safeOperationCount;
+
+    return {
+      network: NETWORK,
+      horizonUrl: HORIZON_URL,
+      operationCount: safeOperationCount,
+      lastLedgerBaseFee,
+      recommendedFeeStroops,
+      totalFeeStroops,
+      totalFeeXlm: stroopsToXlm(totalFeeStroops),
+      feeCharged: feeStats.fee_charged ?? null,
+      maxFee: feeStats.max_fee ?? null,
+    };
+  } catch (err) {
+    throw handleHorizonError(err, "fee stats");
   }
 }
 

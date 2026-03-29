@@ -1,5 +1,7 @@
+import 'dotenv/config';
+import { randomUUID } from "crypto";
 import cors from "cors";
-import "dotenv/config";
+
 import express from "express";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
@@ -45,6 +47,17 @@ const swaggerSpec = createSwaggerSpec({
   serverUrl: `http://localhost:${port}`,
 });
 
+// Attach a unique x-request-id to every request/response for tracing
+app.use((req, res, next) => {
+  const requestId = (req.headers["x-request-id"] || randomUUID());
+  req.id = requestId;
+  res.setHeader("x-request-id", requestId);
+  next();
+});
+
+// Custom morgan token so request IDs appear in every log line
+morgan.token("request-id", (req) => req.id);
+
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
@@ -66,7 +79,7 @@ app.use(
 );
 
 app.use(express.json({ limit: "1mb" }));
-app.use(morgan("dev"));
+app.use(morgan(":request-id :method :url :status :response-time ms"));
 
 app.get("/health", async (req, res) => {
   try {

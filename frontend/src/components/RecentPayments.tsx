@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+import toast from "react-hot-toast";
 import PaymentDetailModal from "@/components/PaymentDetailModal";
 import ExportCsvButton from "@/components/ExportCsvButton";
 import { localeToLanguageTag } from "@/i18n/config";
@@ -20,6 +21,7 @@ interface Payment {
   id: string;
   amount: string;
   asset: string;
+  recipient: string;
   status: string;
   description: string | null;
   created_at: string;
@@ -36,9 +38,13 @@ interface FilterState {
   asset: string;
   dateFrom: string;
   dateTo: string;
+  page: number;
+  limit: number;
 }
 
-const LIMIT = 100;
+type SortColumn = "status" | "amount" | "recipient" | "created_at";
+type SortDirection = "asc" | "desc";
+
 const STATUS_OPTIONS = ["all", "pending", "confirmed", "failed", "refunded"] as const;
 const ASSET_OPTIONS = ["all", "XLM", "USDC"] as const;
 const DEFAULT_FILTERS: FilterState = {
@@ -47,7 +53,11 @@ const DEFAULT_FILTERS: FilterState = {
   asset: "all",
   dateFrom: "",
   dateTo: "",
+  page: 1,
+  limit: 10,
 };
+const DEFAULT_SORT_COLUMN: SortColumn = "created_at";
+const DEFAULT_SORT_DIRECTION: SortDirection = "desc";
 
 function toStatusLabel(
   t: ReturnType<typeof useTranslations>,
@@ -57,16 +67,50 @@ function toStatusLabel(
 }
 
 function filtersFromSearchParams(searchParams: URLSearchParams): FilterState {
+  const pageStr = searchParams.get("page");
+  const limitStr = searchParams.get("limit");
+
   return {
     search: searchParams.get("search") ?? "",
     status: searchParams.get("status") ?? "all",
     asset: searchParams.get("asset") ?? "all",
     dateFrom: searchParams.get("date_from") ?? "",
     dateTo: searchParams.get("date_to") ?? "",
+    page: pageStr ? parseInt(pageStr, 10) : 1,
+    limit: limitStr ? parseInt(limitStr, 10) : 10,
   };
 }
 
-function buildSearchParams(filters: FilterState): URLSearchParams {
+function isSortColumn(value: string | null): value is SortColumn {
+  return (
+    value === "status" ||
+    value === "amount" ||
+    value === "recipient" ||
+    value === "created_at"
+  );
+}
+
+function isSortDirection(value: string | null): value is SortDirection {
+  return value === "asc" || value === "desc";
+}
+
+function sortFromSearchParams(searchParams: URLSearchParams) {
+  const sortColumn = searchParams.get("sortColumn");
+  const sortDirection = searchParams.get("sortDirection");
+
+  return {
+    sortColumn: isSortColumn(sortColumn) ? sortColumn : DEFAULT_SORT_COLUMN,
+    sortDirection: isSortDirection(sortDirection)
+      ? sortDirection
+      : DEFAULT_SORT_DIRECTION,
+  };
+}
+
+function buildSearchParams(
+  filters: FilterState,
+  sortColumn: SortColumn,
+  sortDirection: SortDirection,
+): URLSearchParams {
   const params = new URLSearchParams();
 
   if (filters.search) params.set("search", filters.search);
@@ -74,8 +118,31 @@ function buildSearchParams(filters: FilterState): URLSearchParams {
   if (filters.asset !== "all") params.set("asset", filters.asset);
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.page > 1) params.set("page", filters.page.toString());
+  if (filters.limit !== 10) params.set("limit", filters.limit.toString());
+  if (sortColumn !== DEFAULT_SORT_COLUMN) params.set("sortColumn", sortColumn);
+  if (sortDirection !== DEFAULT_SORT_DIRECTION) {
+    params.set("sortDirection", sortDirection);
+  }
 
   return params;
+}
+
+function SortArrow({
+  active,
+  direction,
+}: {
+  active: boolean;
+  direction: SortDirection;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex transition-opacity ${active ? "opacity-100" : "opacity-35"}`}
+    >
+      {direction === "asc" ? "\u2191" : "\u2193"}
+    </span>
+  );
 }
 
 export default function RecentPayments({
@@ -97,6 +164,10 @@ export default function RecentPayments({
     () => filtersFromSearchParams(searchParams),
     [searchParams],
   );
+  const { sortColumn, sortDirection } = useMemo(
+    () => sortFromSearchParams(searchParams),
+    [searchParams],
+  );
   const hasActiveFilters =
     filters.search ||
     filters.status !== "all" ||
@@ -107,24 +178,36 @@ export default function RecentPayments({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const page = 1;
   const [totalCount, setTotalCount] = useState(0);
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [flashedIds, setFlashedIds] = useState<Set<string>>(new Set());
 
   const updateFilters = useCallback(
-    (nextFilters: FilterState) => {
-      const params = buildSearchParams(nextFilters);
+    (
+      nextFilters: FilterState,
+      nextSortColumn: SortColumn = sortColumn,
+      nextSortDirection: SortDirection = sortDirection,
+    ) => {
+      const params = buildSearchParams(
+        nextFilters,
+        nextSortColumn,
+        nextSortDirection,
+      );
       const query = params.toString();
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     },
-    [pathname, router],
+    [pathname, router, sortColumn, sortDirection],
   );
 
   const handleFilterChange = useCallback(
-    (key: keyof FilterState, value: string) => {
-      updateFilters({ ...filters, [key]: value });
+    (key: keyof FilterState, value: string | number) => {
+      const isResetAction = key !== "page";
+      updateFilters({ 
+        ...filters, 
+        [key]: value,
+        ...(isResetAction ? { page: 1 } : {})
+      });
     },
     [filters, updateFilters],
   );
@@ -134,6 +217,7 @@ export default function RecentPayments({
       updateFilters({
         ...filters,
         [key]: key === "status" || key === "asset" ? "all" : "",
+        page: 1,
       });
     },
     [filters, updateFilters],
@@ -142,6 +226,15 @@ export default function RecentPayments({
   const clearAllFilters = useCallback(() => {
     updateFilters(DEFAULT_FILTERS);
   }, [updateFilters]);
+
+  const handleSort = useCallback(
+    (column: SortColumn) => {
+      const nextDirection =
+        sortColumn === column && sortDirection === "asc" ? "desc" : "asc";
+      updateFilters(filters, column, nextDirection);
+    },
+    [filters, sortColumn, sortDirection, updateFilters],
+  );
 
   const handleConfirmed = useCallback(
     (event: {
@@ -190,9 +283,7 @@ export default function RecentPayments({
         }
 
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-        const params = buildSearchParams(filters);
-        params.set("page", page.toString());
-        params.set("limit", LIMIT.toString());
+        const params = buildSearchParams(filters, sortColumn, sortDirection);
 
         const response = await fetch(`${apiUrl}/api/payments?${params.toString()}`, {
           headers: {
@@ -221,7 +312,47 @@ export default function RecentPayments({
     fetchPayments();
 
     return () => controller.abort();
-  }, [apiKey, filters, t]);
+  }, [apiKey, filters, sortColumn, sortDirection, t]);
+
+  const sortedPayments = useMemo(() => {
+    const statusOrder: Record<string, number> = {
+      pending: 0,
+      confirmed: 1,
+      completed: 2,
+      failed: 3,
+      refunded: 4,
+    };
+
+    return [...payments].sort((left, right) => {
+      let result = 0;
+
+      switch (sortColumn) {
+        case "amount":
+          result = Number(left.amount) - Number(right.amount);
+          break;
+        case "recipient":
+          result = left.recipient.localeCompare(right.recipient);
+          break;
+        case "status":
+          result =
+            (statusOrder[left.status] ?? Number.MAX_SAFE_INTEGER) -
+            (statusOrder[right.status] ?? Number.MAX_SAFE_INTEGER);
+          break;
+        case "created_at":
+        default:
+          result =
+            new Date(left.created_at).getTime() -
+            new Date(right.created_at).getTime();
+          break;
+      }
+
+      if (result === 0) {
+        result = left.id.localeCompare(right.id);
+      }
+
+      return sortDirection === "asc" ? result : -result;
+    });
+  }, [payments, sortColumn, sortDirection]);
 
   const handlePaymentClick = (paymentId: string) => {
     setSelectedPayment(paymentId);
@@ -229,12 +360,13 @@ export default function RecentPayments({
   };
 
   const handleDownloadCSV = () => {
-    if (!payments.length) return;
+    if (!sortedPayments.length) return;
 
-    const mapped = payments.map((p) => ({
+    const mapped = sortedPayments.map((p) => ({
       ID: p.id,
       Amount: `${p.amount.toLocaleString()} ${p.asset}`,
       Status: p.status.charAt(0).toUpperCase() + p.status.slice(1),
+      Recipient: p.recipient,
       Description: p.description ?? "",
       Date: new Date(p.created_at).toLocaleString(),
     }));
@@ -250,6 +382,21 @@ export default function RecentPayments({
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedPayment(null);
+  };
+
+  const handleCopyId = async (id: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(id);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = id;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    }
+    toast.success("Intent ID copied to clipboard");
   };
 
   if (showSkeleton || loading) {
@@ -715,12 +862,12 @@ export default function RecentPayments({
 
       <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-slate-400">
-          {t("showingResults", { shown: payments.length, total: totalCount })}
+          {t("showingResults", { shown: sortedPayments.length, total: totalCount })}
           {hasActiveFilters ? ` ${t("filteredSuffix")}` : ""}
         </p>
 
         <ExportCsvButton
-          transactions={payments.map((payment) => ({
+          transactions={sortedPayments.map((payment) => ({
             id: payment.id,
             createdAt: payment.created_at,
             type: "payment",
@@ -742,7 +889,7 @@ export default function RecentPayments({
 
         <button
           onClick={handleDownloadCSV}
-          disabled={!payments.length}
+          disabled={!sortedPayments.length}
           className="rounded-lg bg-mint px-4 py-2 text-sm font-medium text-black hover:bg-glow disabled:opacity-50"
         >
           Download CSV
@@ -753,26 +900,102 @@ export default function RecentPayments({
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-white/10 bg-white/5">
-              <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                Status
+              <th
+                aria-sort={
+                  sortColumn === "status"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("status")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableStatus")}
+                  <SortArrow
+                    active={sortColumn === "status"}
+                    direction={sortDirection}
+                  />
+                </button>
+              </th>
+              <th
+                aria-sort={
+                  sortColumn === "amount"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("amount")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableAmount")}
+                  <SortArrow
+                    active={sortColumn === "amount"}
+                    direction={sortDirection}
+                  />
+                </button>
+              </th>
+              <th
+                aria-sort={
+                  sortColumn === "recipient"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 sm:table-cell"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("recipient")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableRecipient")}
+                  <SortArrow
+                    active={sortColumn === "recipient"}
+                    direction={sortDirection}
+                  />
+                </button>
+              </th>
+              <th
+                aria-sort={
+                  sortColumn === "created_at"
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 md:table-cell"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSort("created_at")}
+                  className="inline-flex items-center gap-2 transition-colors hover:text-white"
+                >
+                  {t("tableDate")}
+                  <SortArrow
+                    active={sortColumn === "created_at"}
+                    direction={sortDirection}
+                  />
+                </button>
               </th>
               <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                Amount
-              </th>
-              <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 sm:table-cell">
-                Description
-              </th>
-              <th className="hidden px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400 md:table-cell">
-                Date
-              </th>
-              <th className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-slate-400">
-                Link
+                {t("tableLink")}
               </th>
             </tr>
           </thead>
 
             <tbody className="divide-y divide-white/5">
-              {payments.map((payment) => (
+              {sortedPayments.map((payment) => (
                 <tr
                   key={payment.id}
                   className={`cursor-pointer transition-colors hover:bg-white/5 ${
@@ -796,10 +1019,32 @@ export default function RecentPayments({
                     </span>
                   </td>
                   <td className="px-4 py-3 font-medium text-white">
-                    {payment.amount} {payment.asset}
+                    <span className="inline-flex items-center gap-1.5">
+                      {payment.amount} {payment.asset}
+                      <button
+                        onClick={(event) => handleCopyId(payment.id, event)}
+                        className="text-slate-500 transition-colors hover:text-mint"
+                        aria-label="Copy intent ID"
+                        title={`Copy ${payment.id}`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-3.5 w-3.5"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      </button>
+                    </span>
                   </td>
                   <td className="hidden px-4 py-3 text-slate-400 sm:table-cell">
-                    {payment.description || t("emptyDescriptionValue")}
+                    <code className="font-mono text-xs text-slate-300">
+                      {payment.recipient}
+                    </code>
                   </td>
                   <td className="hidden px-4 py-3 text-slate-400 md:table-cell">
                     {new Date(payment.created_at).toLocaleDateString(locale)}
@@ -820,6 +1065,49 @@ export default function RecentPayments({
             </tbody>
           </table>
         </div>
+
+      {/* Pagination Controls */}
+      {totalCount > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="limit" className="text-sm text-slate-400">
+              Items per page
+            </label>
+            <select
+              id="limit"
+              value={filters.limit}
+              onChange={(e) => handleFilterChange("limit", parseInt(e.target.value, 10))}
+              className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-sm text-white focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
+            >
+              {[10, 20, 50, 100].map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              disabled={filters.page <= 1}
+              onClick={() => handleFilterChange("page", filters.page - 1)}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-slate-400">
+              Page {filters.page} of {Math.max(1, Math.ceil(totalCount / filters.limit))}
+            </span>
+            <button
+              disabled={filters.page >= Math.ceil(totalCount / filters.limit)}
+              onClick={() => handleFilterChange("page", filters.page + 1)}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       <PaymentDetailModal
         paymentId={selectedPayment}

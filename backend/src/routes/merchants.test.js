@@ -26,7 +26,10 @@ function getRotateWebhookSecretHandler(router) {
     throw new Error("rotate-webhook-secret route not found");
   }
 
-  return layer.route.stack[0].handle;
+  // Find the actual handler: it's typically the last one in the route's stack,
+  // following any middlewares like validateRequest.
+  const handlers = layer.route.stack;
+  return handlers[handlers.length - 1].handle;
 }
 
 describe("POST /api/merchants/rotate-webhook-secret", () => {
@@ -37,7 +40,8 @@ describe("POST /api/merchants/rotate-webhook-secret", () => {
   });
 
   it("rotates secret with default 24h grace period", async () => {
-    const { default: router } = await import("./merchants.js");
+    const { default: createMerchantsRouter } = await import("./merchants.js");
+    const router = createMerchantsRouter();
     const handler = getRotateWebhookSecretHandler(router);
 
     const req = {
@@ -78,7 +82,8 @@ describe("POST /api/merchants/rotate-webhook-secret", () => {
   });
 
   it("uses request grace period override", async () => {
-    const { default: router } = await import("./merchants.js");
+    const { default: createMerchantsRouter } = await import("./merchants.js");
+    const router = createMerchantsRouter();
     const handler = getRotateWebhookSecretHandler(router);
 
     const req = {

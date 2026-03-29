@@ -82,6 +82,30 @@ const RegisterIcon = (
 
 const commands: Command[] = [
   {
+    id: "dashboard",
+    label: "Dashboard",
+    description: "View payments, metrics and activity",
+    href: "/dashboard",
+    icon: HomeIcon,
+    keywords: ["dashboard", "home", "overview", "payments", "activity"],
+  },
+  {
+    id: "api-keys",
+    label: "API Keys",
+    description: "Manage and rotate your API keys",
+    href: "/settings#api-keys",
+    icon: SettingsIcon,
+    keywords: ["api", "keys", "key", "rotate", "secret", "token"],
+  },
+  {
+    id: "webhooks",
+    label: "Webhooks",
+    description: "Configure webhook URL and view delivery logs",
+    href: "/settings#webhooks",
+    icon: SettingsIcon,
+    keywords: ["webhook", "webhooks", "delivery", "logs", "url", "endpoint"],
+  },
+  {
     id: "settings",
     label: "Settings",
     description: "API keys, webhook URL & merchant config",
@@ -223,7 +247,7 @@ export default function CommandPalette() {
       <div
         role="dialog"
         aria-label="Command palette"
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-white/10 bg-night/95 shadow-2xl shadow-mint/5"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-white/10 bg-black/90 shadow-2xl shadow-mint/5 backdrop-blur-xl"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handlePaletteKeydown}
       >

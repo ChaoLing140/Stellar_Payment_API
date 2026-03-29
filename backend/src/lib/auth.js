@@ -36,11 +36,12 @@ export function createApiKeyAuth({
         return res.status(401).json({ error: "Missing x-api-key header" });
       }
 
-      const { data: merchant, error } = await client
+      // First try to find merchant by current API key
+      let { data: merchant, error } = await client
         .from("merchants")
         .select(
-  "id, email, business_name, notification_email, branding_config, merchant_settings, webhook_secret, webhook_secret_old, webhook_secret_expiry, webhook_version, payment_limits"
-)
+          "id, email, business_name, notification_email, branding_config, merchant_settings, webhook_secret, webhook_secret_old, webhook_secret_expiry, webhook_version, payment_limits, api_key, api_key_expires_at, api_key_old, api_key_old_expires_at"
+        )
         .eq("api_key", apiKey)
         .is("deleted_at", null)
         .maybeSingle();
@@ -50,8 +51,50 @@ export function createApiKeyAuth({
         throw error;
       }
 
+      // If not found by current key, check if it's the old key during rotation overlap
       if (!merchant) {
-        return res.status(401).json({ error: "Invalid API key" });
+        const { data: oldKeyMerchant, error: oldKeyError } = await client
+          .from("merchants")
+          .select(
+            "id, email, business_name, notification_email, branding_config, merchant_settings, webhook_secret, webhook_secret_old, webhook_secret_expiry, webhook_version, payment_limits, api_key, api_key_expires_at, api_key_old, api_key_old_expires_at"
+          )
+          .eq("api_key_old", apiKey)
+          .maybeSingle();
+
+        if (oldKeyError) {
+          oldKeyError.status = 500;
+          throw oldKeyError;
+        }
+
+        if (!oldKeyMerchant) {
+          return res.status(401).json({ error: "Invalid API key" });
+        }
+
+        // Check if old key has expired (overlap period ended)
+        const now = new Date();
+        if (
+          oldKeyMerchant.api_key_old_expires_at &&
+          new Date(oldKeyMerchant.api_key_old_expires_at) < now
+        ) {
+          return res.status(401).json({
+            error: "API key has expired. Please rotate to a new key.",
+            code: "API_KEY_EXPIRED"
+          });
+        }
+
+        merchant = oldKeyMerchant;
+      } else {
+        // Check if current API key has expired
+        const now = new Date();
+        if (
+          merchant.api_key_expires_at &&
+          new Date(merchant.api_key_expires_at) < now
+        ) {
+          return res.status(401).json({
+            error: "API key has expired. Please rotate to a new key.",
+            code: "API_KEY_EXPIRED"
+          });
+        }
       }
 
       req.merchant = merchant;

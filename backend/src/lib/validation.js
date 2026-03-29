@@ -25,8 +25,10 @@ export const validateRequest = (schemas) => async (req, res, next) => {
     return next();
   } catch (error) {
     if (error instanceof ZodError) {
-      // Pass the error to the global error handler which formats it.
-      return next(error);
+      return res.status(400).json({
+        error: "Validation failed",
+        errors: error.format(),
+      });
     }
     
     return next(error);

@@ -65,10 +65,11 @@ const paymentBaseSchema = z.object({
       return true;
     }
 
-    return z.string().url().safeParse(value).success;
-  }, "webhook_url must be a valid URL"),
-  metadata: z.unknown().optional(),
-});
+      return z.string().url().safeParse(value).success;
+    }, "webhook_url must be a valid URL"),
+    client_id: optionalTrimmedString(),
+    metadata: z.unknown().optional(),
+  });
 
 function applyPaymentValidationRules(body, ctx) {
   const isValidUnsigned64BitInteger = (value) => {
@@ -211,6 +212,10 @@ export const paymentSessionZodSchema = paymentBaseSchema
   })
   .superRefine(applyPaymentValidationRules);
 
+export const v2PaymentSessionSchema = paymentSessionZodSchema;
+
+const SAFE_HEADER_NAME_RE = /^[a-zA-Z0-9\-_]+$/;
+
 export const webhookSettingsSchema = z.object({
   webhook_url: z.preprocess(
     (value) => {
@@ -227,17 +232,17 @@ export const webhookSettingsSchema = z.object({
       .refine((val) => val.startsWith("https://"), "webhook_url must use HTTPS")
       .optional(),
   ),
+  custom_headers: z
+    .record(z.string(), z.string().min(1, "Header value must not be empty"))
+    .refine(
+      (obj) => Object.keys(obj).every((k) => SAFE_HEADER_NAME_RE.test(k)),
+      "Header names must contain only alphanumeric characters, hyphens, or underscores",
+    )
+    .optional()
+    .nullable(),
 });
 
-export function formatZodError(error) {
-  if (error && Array.isArray(error.issues)) {
-    return error.issues.map((issue) => ({
-      field: issue.path.join("."),
-      message: issue.message,
-    }));
-  }
-  return "Validation error";
-}
+
 
 /**
  * Helper to parse and validate payment body for session creation.
@@ -267,6 +272,17 @@ export const authChallengeSchema = z.object({
       required_error: "Account address required",
       invalid_type_error: "Account must be a string",
     })
+    .trim()
+    .min(1, "destination_address is required"),
+  description: paymentBaseSchema.shape.description,
+  memo: paymentBaseSchema.shape.memo,
+  memo_type: paymentBaseSchema.shape.memo_type,
+  callback_url: optionalTrimmedString().refine((value) => {
+    if (!value) return true;
+    return z.string().url().safeParse(value).success;
+  }, "callback_url must be a valid URL"),
+  client_id: paymentBaseSchema.shape.client_id,
+  metadata: z.unknown().optional(),
     .refine(
       (val) => val.startsWith("G") && val.length === 56,
       "Invalid Stellar address",

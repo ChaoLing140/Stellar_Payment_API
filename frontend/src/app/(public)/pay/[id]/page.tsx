@@ -4,8 +4,11 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useWallet } from "@/lib/wallet-context";
+import { Spinner } from "@/components/ui/Spinner";
 import { usePayment } from "@/lib/usePayment";
 import { useAssetMetadata } from "@/lib/useAssetMetadata";
+import { createReceiptPdf } from "@/lib/receipt-pdf";
+import CheckoutQrModal from "@/components/CheckoutQrModal";
 import CopyButton from "@/components/CopyButton";
 import WalletSelector from "@/components/WalletSelector";
 import toast from "react-hot-toast";
@@ -14,6 +17,28 @@ import "react-loading-skeleton/dist/skeleton.css";
 import { QRCodeSVG } from "qrcode.react";
 import { localeToLanguageTag } from "@/i18n/config";
 import Confetti from "react-confetti";
+import { useCheckoutPresence } from "@/lib/useCheckoutPresence";
+import { Modal } from "@/components/ui/Modal";
+
+function ActiveViewersBadge({
+  activeViewers,
+  t,
+}: {
+  activeViewers: number;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (activeViewers <= 1) return null;
+
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/25 bg-orange-400/10 px-3 py-1.5 text-xs font-medium text-orange-200">
+      <span className="relative flex h-2.5 w-2.5">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-300/75" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-orange-300" />
+      </span>
+      {t("activeViewers", { count: activeViewers })}
+    </div>
+  );
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -64,6 +89,29 @@ interface PaymentDetails {
   branding_config?: BrandingConfig | null;
 }
 
+interface PathQuote {
+  source_asset: string;
+  source_asset_issuer: string | null;
+  source_amount: string;
+  send_max: string;
+  destination_asset: string;
+  destination_asset_issuer: string | null;
+  destination_amount: string;
+  path: Array<{ asset_code: string; asset_issuer: string | null }>;
+  slippage: number;
+}
+
+interface NetworkFeeResponse {
+  network_fee: {
+    network: string;
+    horizon_url: string;
+    operation_count: number;
+    stroops: number;
+    xlm: string;
+    last_ledger_base_fee: number;
+  };
+}
+
 // ─── Branding defaults ───────────────────────────────────────────────────────
 
 const DEFAULT_CHECKOUT_THEME: Required<
@@ -79,7 +127,7 @@ const DEFAULT_CHECKOUT_THEME: Required<
  * Only well-formed values from the backend override defaults.
  */
 function resolveBranding(
-  config: BrandingConfig | null | undefined
+  config: BrandingConfig | null | undefined,
 ): BrandingConfig & typeof DEFAULT_CHECKOUT_THEME {
   return {
     ...DEFAULT_CHECKOUT_THEME,
@@ -98,7 +146,7 @@ function resolveBranding(
  * single application point drives the entire page palette.
  */
 function buildThemeStyle(
-  branding: ReturnType<typeof resolveBranding>
+  branding: ReturnType<typeof resolveBranding>,
 ): CSSProperties {
   return {
     "--checkout-primary": branding.primary_color,
@@ -146,6 +194,7 @@ function MerchantHeader({ branding, paymentId, t }: MerchantHeaderProps) {
             alt={altText}
             onError={() => setLogoError(true)}
             className="h-10 w-auto max-w-[180px] object-contain"
+            // It seems you&apos;re currently offline. Please check your connection and
             // Prevent referrer leakage to third-party image hosts
             referrerPolicy="no-referrer"
           />
@@ -195,7 +244,11 @@ function AssetBadge({
         className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={logo} alt={name ?? asset} className="h-8 w-8 object-contain" />
+        <img
+          src={logo}
+          alt={name ?? asset}
+          className="h-8 w-8 object-contain"
+        />
       </span>
     );
   }
@@ -298,6 +351,10 @@ function buildSep7Uri(payment: PaymentDetails) {
   return `web+stellar:pay?${params.toString()}`;
 }
 
+function buildReceiptFilename(paymentId: string) {
+  return `receipt-${paymentId.replace(/[^a-zA-Z0-9_-]/g, "-")}.pdf`;
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function LoadingSkeleton() {
@@ -350,39 +407,42 @@ export default function PaymentPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showRawIntent, setShowRawIntent] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
+  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [networkFee, setNetworkFee] =
+    useState<NetworkFeeResponse["network_fee"] | null>(null);
+  const [networkFeeLoading, setNetworkFeeLoading] = useState(false);
+  const [networkFeeError, setNetworkFeeError] = useState<string | null>(null);
+  const paymentStatus = payment?.status;
 
   useEffect(() => {
-    if (payment && (payment.status === "confirmed" || payment.status === "completed")) {
+    if (
+      payment &&
+      (payment.status === "confirmed" || payment.status === "completed")
+    ) {
       setShowConfetti(true);
     }
-  }, [payment?.status]);
+  }, [payment]);
 
   // Path payment state
   const [usePathPayment, setUsePathPayment] = useState(false);
-  const [pathQuote, setPathQuote] = useState<{
-    source_asset: string;
-    source_asset_issuer: string | null;
-    source_amount: string;
-    send_max: string;
-    destination_asset: string;
-    destination_amount: string;
-    path: Array<{ asset_code: string; asset_issuer: string | null }>;
-    slippage: number;
-  } | null>(null);
+  const [pathQuote, setPathQuote] = useState<PathQuote | null>(null);
   const [pathQuoteLoading, setPathQuoteLoading] = useState(false);
   const [pathQuoteError, setPathQuoteError] = useState<string | null>(null);
 
   const { activeProvider } = useWallet();
   const {
-   isProcessing,
-   status: txStatus,
-   error: paymentError,
-   processPayment,
-   processPathPayment,
- } = usePayment(activeProvider);
+    isProcessing,
+    status: txStatus,
+    error: paymentError,
+    processPayment,
+    processPathPayment,
+  } = usePayment(activeProvider);
 
-const { assets: assetMetadata } = useAssetMetadata();
+  const { assets: assetMetadata } = useAssetMetadata();
+  const activeViewers = useCheckoutPresence(paymentId);
 
   // ── Fetch payment details ──────────────────────────────────────────────────
   useEffect(() => {
@@ -400,7 +460,7 @@ const { assets: assetMetadata } = useAssetMetadata();
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") return;
         setFetchError(
-          err instanceof Error ? err.message : t("loadPaymentFailed")
+          err instanceof Error ? err.message : t("loadPaymentFailed"),
         );
       } finally {
         setLoading(false);
@@ -411,31 +471,71 @@ const { assets: assetMetadata } = useAssetMetadata();
     return () => controller.abort();
   }, [paymentId, t]);
 
-  // ── Poll until settled ─────────────────────────────────────────────────────
+  // ── Real-time status updates via SSE ──────────────────────────────────────
   useEffect(() => {
     if (loading || !payment) return;
     const settled = ["confirmed", "completed", "failed"].includes(
-      payment.status
+      payment.status,
     );
     if (settled) return;
 
+    const eventSource = new EventSource(`${API_URL}/api/stream/${paymentId}`);
+
+    eventSource.addEventListener("payment.confirmed", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setPayment((prev) =>
+          prev ? { ...prev, status: data.status, tx_id: data.tx_id } : null,
+        );
+        toast.success(t("paymentConfirmed") || "Payment confirmed!");
+        eventSource.close();
+      } catch (err) {
+        console.error("Failed to parse SSE message", err);
+      }
+    });
+
+    eventSource.onerror = () => {
+      console.warn("SSE connection failed, falling back to polling.");
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }, [paymentId, payment, loading, t]);
+
+  // ── Polling fallback (only if not confirmed) ──────────────────────────────
+  useEffect(() => {
+    if (loading || !payment) return;
+    const settled = ["confirmed", "completed", "failed"].includes(
+      payment.status,
+    );
+    if (settled) return;
+
+    // Use a longer interval for polling fallback (e.g., 10s)
     const id = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/api/payment-status/${paymentId}`);
         if (!res.ok) return;
         const data = await res.json();
-        if (data.payment) setPayment(data.payment);
+        if (data.payment && data.payment.status !== payment.status) {
+          setPayment(data.payment);
+        }
       } catch {
         /* silent — retry next tick */
       }
-    }, 3000);
+    }, 10000);
 
     return () => clearInterval(id);
   }, [paymentId, payment, loading]);
 
   // ── Fetch path payment quote when wallet is connected ────────────────────
   useEffect(() => {
-    if (!payment || !activeProvider || payment.status !== "pending") return;
+    if (!payment || !activeProvider || payment.status !== "pending") {
+      setPathQuote(null);
+      setPathQuoteError(null);
+      setPathQuoteLoading(false);
+      setUsePathPayment(false);
+      return;
+    }
 
     let cancelled = false;
     (async () => {
@@ -449,17 +549,26 @@ const { assets: assetMetadata } = useAssetMetadata();
           source_account: pubKey,
         });
         const res = await fetch(
-          `${API_URL}/api/path-payment-quote/${paymentId}?${qs}`
+          `${API_URL}/api/path-payment-quote/${paymentId}?${qs}`,
         );
         if (!res.ok) {
-          setPathQuote(null);
+          if (!cancelled) {
+            setPathQuote(null);
+            setUsePathPayment(false);
+          }
           return;
         }
-        const data = await res.json();
-        if (!cancelled) setPathQuote(data);
+        const data = (await res.json()) as PathQuote;
+        if (!cancelled) {
+          setPathQuote(data);
+          setUsePathPayment(true);
+        }
       } catch {
-        if (!cancelled)
+        if (!cancelled) {
+          setPathQuote(null);
+          setUsePathPayment(false);
           setPathQuoteError("Could not fetch path payment quote.");
+        }
       } finally {
         if (!cancelled) setPathQuoteLoading(false);
       }
@@ -469,9 +578,47 @@ const { assets: assetMetadata } = useAssetMetadata();
     };
   }, [payment, activeProvider, paymentId]);
 
+  useEffect(() => {
+    if (!isPayModalOpen) return;
+
+    const controller = new AbortController();
+    const loadNetworkFee = async () => {
+      setNetworkFeeLoading(true);
+      setNetworkFeeError(null);
+
+      try {
+        const res = await fetch(`${API_URL}/api/network-fee`, {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(t("networkFeeUnavailable"));
+        }
+
+        const data = (await res.json()) as NetworkFeeResponse;
+        setNetworkFee(data.network_fee);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        setNetworkFee(null);
+        setNetworkFeeError(t("networkFeeUnavailable"));
+      } finally {
+        setNetworkFeeLoading(false);
+      }
+    };
+
+    loadNetworkFee();
+
+    return () => controller.abort();
+  }, [isPayModalOpen, t]);
+
   // ── Pay handler ───────────────────────────────────────────────────────────
-  const handlePay = async () => {
+  const handlePay = () => {
+    setIsPayModalOpen(true);
+  };
+
+  const handleConfirmPay = async () => {
     if (!payment) return;
+    setIsPayModalOpen(false);
     setActionError(null);
 
     try {
@@ -482,11 +629,13 @@ const { assets: assetMetadata } = useAssetMetadata();
           recipient: payment.recipient,
           destAmount: pathQuote.destination_amount,
           destAssetCode: pathQuote.destination_asset,
-          destAssetIssuer: payment.asset_issuer,
+          destAssetIssuer: pathQuote.destination_asset_issuer,
           sendMax: pathQuote.send_max,
           sendAssetCode: pathQuote.source_asset,
           sendAssetIssuer: pathQuote.source_asset_issuer,
           path: pathQuote.path,
+          memo: payment.memo,
+          memoType: payment.memo_type,
         });
       } else {
         result = await processPayment({
@@ -494,6 +643,8 @@ const { assets: assetMetadata } = useAssetMetadata();
           amount: String(payment.amount),
           assetCode: payment.asset,
           assetIssuer: payment.asset_issuer,
+          memo: payment.memo,
+          memoType: payment.memo_type,
         });
       }
 
@@ -514,6 +665,49 @@ const { assets: assetMetadata } = useAssetMetadata();
       const msg = paymentError ?? t("paymentFailed");
       setActionError(msg);
       toast.error(msg);
+    }
+  };
+
+  const handleDownloadReceipt = async () => {
+    if (!payment) return;
+
+    try {
+      setIsDownloadingReceipt(true);
+      setActionError(null);
+
+      const blob = createReceiptPdf({
+        merchantName: branding.merchant_name,
+        paymentId: payment.id,
+        amount: payment.amount.toLocaleString(locale, {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 7,
+        }),
+        asset: payment.asset.toUpperCase(),
+        status: t(`status.${payment.status.toLowerCase()}`),
+        date: new Date(payment.created_at).toLocaleString(locale, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }),
+        recipient: payment.recipient,
+        transactionHash: payment.tx_id ?? t("receiptHashUnavailable"),
+        description: payment.description,
+      });
+
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = buildReceiptFilename(payment.id);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      toast.success(t("receiptDownloaded"));
+    } catch {
+      const msg = t("receiptDownloadFailed");
+      setActionError(msg);
+      toast.error(msg);
+    } finally {
+      setIsDownloadingReceipt(false);
     }
   };
 
@@ -539,21 +733,32 @@ const { assets: assetMetadata } = useAssetMetadata();
   const isSettled =
     payment.status === "confirmed" || payment.status === "completed";
   const isFailed = payment.status === "failed";
+  const paymentIntentUri = buildSep7Uri(payment);
 
   // Resolve branding once — used by both the theme style and the header component
-  const branding = resolveBranding(payment.branding_config);
+  const branding = resolveBranding(payment.branding_config || {});
 
   return (
     <>
       {showConfetti && (
-        <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 100, pointerEvents: "none" }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            zIndex: 100,
+            pointerEvents: "none",
+          }}
+        >
           <Confetti recycle={false} numberOfPieces={400} />
         </div>
       )}
       {/* ── Full-screen processing overlay ── */}
       {isProcessing && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-black/85 backdrop-blur-sm">
-          <div className="h-14 w-14 animate-spin rounded-full border-4 border-white/15 border-t-[var(--checkout-primary)]" />
+          <Spinner size="xl" />
           <div className="flex flex-col items-center gap-1 text-center">
             <p className="text-base font-semibold text-white">
               {txStatus ?? t("processingFallback")}
@@ -569,6 +774,9 @@ const { assets: assetMetadata } = useAssetMetadata();
       >
         {/* ── Page header — merchant logo / name ── */}
         <MerchantHeader branding={branding} paymentId={payment.id} t={t} />
+        {payment.status === "pending" && (
+          <ActiveViewersBadge activeViewers={activeViewers} t={t} />
+        )}
 
         {/* ── Main card ── */}
         <div className="rounded-3xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur">
@@ -576,8 +784,16 @@ const { assets: assetMetadata } = useAssetMetadata();
           <div className="flex flex-col items-center gap-3 border-b border-white/10 px-8 py-10">
             <AssetBadge
               asset={payment.asset}
-              logo={assetMetadata.find((a) => a.code === payment.asset.toUpperCase())?.logo}
-              name={assetMetadata.find((a) => a.code === payment.asset.toUpperCase())?.name}
+              logo={
+                assetMetadata.find(
+                  (a) => a.code === payment.asset.toUpperCase(),
+                )?.logo
+              }
+              name={
+                assetMetadata.find(
+                  (a) => a.code === payment.asset.toUpperCase(),
+                )?.name
+              }
             />
             <div className="flex items-baseline gap-2">
               <span className="text-5xl font-bold tracking-tight text-white">
@@ -623,7 +839,7 @@ const { assets: assetMetadata } = useAssetMetadata();
               </p>
               <div className="flex items-center justify-center rounded-xl border border-white/10 bg-white p-4">
                 <QRCodeSVG
-                  value={payment.recipient}
+                  value={paymentIntentUri}
                   size={160}
                   level="M"
                   bgColor="#ffffff"
@@ -633,11 +849,31 @@ const { assets: assetMetadata } = useAssetMetadata();
               <p className="text-center text-xs text-slate-500">
                 {t("scanDescription")}
               </p>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(true)}
+                className="inline-flex items-center justify-center gap-2 self-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm12 3v3m0 0h3m-3 0h-3m3-6v-3m0 3h3m-9 6h6v-6h-6z"
+                  />
+                </svg>
+                {t("openQrModal")}
+              </button>
               <div className="sm:hidden">
                 <button
                   type="button"
                   onClick={() => setShowRawIntent((prev) => !prev)}
-                  className="mx-auto mt-2 text-xs font-medium transition-colors"
+                  className="mx-auto mt-2 text-xs font-medium transition-colors hover:text-glow"
                   style={{ color: "var(--checkout-primary)" }}
                 >
                   {showRawIntent ? t("hideRawIntent") : t("viewRawIntent")}
@@ -645,12 +881,9 @@ const { assets: assetMetadata } = useAssetMetadata();
                 {showRawIntent && (
                   <div className="mt-3 flex items-start gap-2 rounded-lg border border-white/10 bg-black/40 p-3">
                     <code className="flex-1 break-all font-mono text-[11px] text-slate-200">
-                      {buildSep7Uri(payment)}
+                      {paymentIntentUri}
                     </code>
-                    <CopyButton
-                      text={buildSep7Uri(payment)}
-                      className="mt-0.5"
-                    />
+                    <CopyButton text={paymentIntentUri} className="mt-0.5" />
                   </div>
                 )}
               </div>
@@ -711,6 +944,41 @@ const { assets: assetMetadata } = useAssetMetadata();
                       })}
                     </p>
 
+                    {pathQuote && !pathQuoteLoading && (
+                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                          {t("approximateCostLabel")}
+                        </p>
+                        <div className="mt-2 flex items-end justify-between gap-4">
+                          <div>
+                            <p className="text-2xl font-bold text-white">
+                              {Number(pathQuote.source_amount).toLocaleString(
+                                locale,
+                                {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 7,
+                                },
+                              )}{" "}
+                              {pathQuote.source_asset}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {t("approximateCostHelp", {
+                                amount: pathQuote.destination_amount,
+                                asset: pathQuote.destination_asset,
+                              })}
+                            </p>
+                          </div>
+                          <p className="text-right text-xs text-slate-500">
+                            {t("slippageBuffer", {
+                              percent: Math.round(pathQuote.slippage * 100),
+                              sendMax: pathQuote.send_max,
+                              asset: pathQuote.source_asset,
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Path payment toggle */}
                     {pathQuote && !pathQuoteLoading && (
                       <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 px-4 py-3 cursor-pointer select-none">
@@ -722,11 +990,11 @@ const { assets: assetMetadata } = useAssetMetadata();
                           style={{ accentColor: "var(--checkout-primary)" }}
                         />
                         <span className="text-sm text-slate-300">
-                          Pay with{" "}
+                          {t("pathPaymentTogglePrefix")}{" "}
                           <span className="font-semibold text-white">
-                            {pathQuote.send_max} {pathQuote.source_asset}
+                            {pathQuote.source_amount} {pathQuote.source_asset}
                           </span>{" "}
-                          instead
+                          {t("pathPaymentToggleSuffix")}
                         </span>
                       </label>
                     )}
@@ -801,22 +1069,35 @@ const { assets: assetMetadata } = useAssetMetadata();
 
             {/* Settled success note */}
             {isSettled && (
-              <div
-                className="rounded-xl border p-4 text-center"
-                style={{
-                  borderColor: "var(--checkout-primary-border)",
-                  backgroundColor: "var(--checkout-primary-subtle)",
-                }}
-              >
-                <p
-                  className="text-sm font-semibold"
-                  style={{ color: "var(--checkout-primary)" }}
+              <div className="flex flex-col gap-3">
+                <div
+                  className="rounded-xl border p-4 text-center"
+                  style={{
+                    borderColor: "var(--checkout-primary-border)",
+                    backgroundColor: "var(--checkout-primary-subtle)",
+                  }}
                 >
-                  {t("receivedTitle")}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {t("receivedDescription")}
-                </p>
+                  <p
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--checkout-primary)" }}
+                  >
+                    {t("receivedTitle")}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {t("receivedDescription")}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadReceipt}
+                  disabled={isDownloadingReceipt}
+                  className="flex h-11 w-full items-center justify-center rounded-xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDownloadingReceipt
+                    ? t("downloadReceiptLoading")
+                    : t("downloadReceipt")}
+                </button>
               </div>
             )}
 
@@ -834,6 +1115,63 @@ const { assets: assetMetadata } = useAssetMetadata();
           </div>
         </div>
       </main>
+      <CheckoutQrModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        qrValue={paymentIntentUri}
+        paymentId={payment.id}
+      />
+      <Modal
+        isOpen={isPayModalOpen}
+        onClose={() => {
+          if (!isProcessing) {
+            setIsPayModalOpen(false);
+          }
+        }}
+        title={t("reviewPaymentTitle")}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+              {t("completePayment")}
+            </p>
+            <p className="mt-2 text-2xl font-bold text-white">
+              {usePathPayment && pathQuote
+                ? `${pathQuote.send_max} ${pathQuote.source_asset}`
+                : `${payment.amount.toLocaleString(locale, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 7,
+                  })} ${payment.asset.toUpperCase()}`}
+            </p>
+            <p className="mt-3 text-sm text-slate-300">
+              {networkFeeLoading
+                ? t("loadingNetworkFee")
+                : networkFee
+                  ? t("networkFeeLabel", { amount: networkFee.xlm })
+                  : networkFeeError ?? t("networkFeeUnavailable")}
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setIsPayModalOpen(false)}
+              className="flex h-11 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              {t("cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmPay}
+              disabled={isProcessing}
+              className="flex h-11 flex-1 items-center justify-center rounded-xl px-4 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ backgroundColor: "var(--checkout-primary)" }}
+            >
+              {t("confirmPayment")}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

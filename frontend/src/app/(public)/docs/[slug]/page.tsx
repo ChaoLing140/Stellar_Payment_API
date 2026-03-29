@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { MDXRemote } from "next-mdx-remote";
 import { docsManifest } from "@/lib/docs-manifest";
 import { getDocBySlug } from "@/lib/docs";
 
@@ -50,10 +51,9 @@ export default async function DocPage({
         </p>
       </header>
 
-      <div
-        className="docs-prose"
-        dangerouslySetInnerHTML={{ __html: doc.html }}
-      />
+      <div className="docs-prose">
+        <MDXRemote {...doc.serialized} />
+      </div>
     </article>
   );
 }

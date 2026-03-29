@@ -165,6 +165,15 @@ test.describe("Checkout – Rendering", () => {
     ).toBeVisible();
   });
 
+  test("shows receipt download action for settled payments", async ({ page }) => {
+    await mockPayment(page, { status: "completed" });
+    await page.goto(PAY_URL);
+
+    await expect(
+      page.getByRole("button", { name: "Download Receipt" })
+    ).toBeVisible();
+  });
+
   test("shows failed note for a failed payment", async ({ page }) => {
     await mockPayment(page, { status: "failed" });
     await page.goto(PAY_URL);
@@ -198,6 +207,19 @@ test.describe("Checkout – Rendering", () => {
     await page.goto(PAY_URL);
 
     await expect(page.getByText("Transaction")).not.toBeVisible();
+  });
+
+  test("downloads a receipt PDF for a completed payment", async ({ page }) => {
+    const txHash =
+      "3b5e2a1f8c9d4e6f7a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f";
+    await mockPayment(page, { status: "completed", tx_id: txHash });
+    await page.goto(PAY_URL);
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download Receipt" }).click();
+
+    const download = await downloadPromise;
+    expect(await download.suggestedFilename()).toBe(`receipt-${PAYMENT_ID}.pdf`);
   });
 });
 

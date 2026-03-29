@@ -6,6 +6,7 @@ import { sendWebhook } from "../lib/webhooks.js";
 import { getPayloadForVersion } from "../webhooks/resolver.js";
 
 const DEFAULT_WEBHOOK_SECRET_ROTATION_GRACE_HOURS = 24;
+const DEFAULT_API_KEY_ROTATION_GRACE_HOURS = 24;
 
 function resolveWebhookSecretRotationGraceHours(requestValue) {
   if (typeof requestValue === "number") {
@@ -83,12 +84,38 @@ export const merchantService = {
     };
   },
 
-  async rotateApiKey(merchantId) {
+  async rotateApiKey(merchantId, gracePeriodHours = DEFAULT_API_KEY_ROTATION_GRACE_HOURS) {
+    // Get current merchant to preserve old key
+    const { data: merchant, error: fetchError } = await supabase
+      .from("merchants")
+      .select("api_key")
+      .eq("id", merchantId)
+      .maybeSingle();
+
+    if (fetchError) {
+      fetchError.status = 500;
+      throw fetchError;
+    }
+
+    if (!merchant) {
+      const err = new Error("Merchant not found");
+      err.status = 404;
+      throw err;
+    }
+
     const newApiKey = `sk_${randomBytes(24).toString("hex")}`;
+    const now = Date.now();
+    const graceHours = Math.min(Math.max(gracePeriodHours, 0), 168); // Clamp between 0 and 168 hours (1 week)
+    const oldKeyExpiry = new Date(now + graceHours * 60 * 60 * 1000).toISOString();
 
     const { error } = await supabase
       .from("merchants")
-      .update({ api_key: newApiKey })
+      .update({
+        api_key: newApiKey,
+        api_key_old: merchant.api_key,
+        api_key_old_expires_at: oldKeyExpiry,
+        api_key_expires_at: null, // Clear any previous expiry
+      })
       .eq("id", merchantId);
 
     if (error) {
@@ -96,7 +123,56 @@ export const merchantService = {
       throw error;
     }
 
-    return { api_key: newApiKey };
+    return {
+      api_key: newApiKey,
+      api_key_old_expires_at: oldKeyExpiry,
+      grace_period_hours: graceHours,
+    };
+  },
+
+  async setApiKeyExpiry(merchantId, expiresAt) {
+    const { error } = await supabase
+      .from("merchants")
+      .update({ api_key_expires_at: expiresAt })
+      .eq("id", merchantId);
+
+    if (error) {
+      error.status = 500;
+      throw error;
+    }
+
+    return { api_key_expires_at: expiresAt };
+  },
+
+  async getApiKeyStatus(merchantId) {
+    const { data, error } = await supabase
+      .from("merchants")
+      .select("api_key, api_key_expires_at, api_key_old, api_key_old_expires_at")
+      .eq("id", merchantId)
+      .maybeSingle();
+
+    if (error) {
+      error.status = 500;
+      throw error;
+    }
+
+    if (!data) {
+      const err = new Error("Merchant not found");
+      err.status = 404;
+      throw err;
+    }
+
+    const now = new Date();
+    const expiresAt = data.api_key_expires_at ? new Date(data.api_key_expires_at) : null;
+    const oldExpiresAt = data.api_key_old_expires_at ? new Date(data.api_key_old_expires_at) : null;
+
+    return {
+      current_key_expires_at: data.api_key_expires_at,
+      is_expired: expiresAt ? expiresAt < now : false,
+      is_expiring_soon: expiresAt && expiresAt > now && expiresAt < new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+      old_key_active: oldExpiresAt ? oldExpiresAt > now : false,
+      old_key_expires_at: data.api_key_old_expires_at,
+    };
   },
 
   async rotateWebhookSecret(merchantId, currentSecret, gracePeriodHours) {
@@ -270,5 +346,83 @@ export const merchantService = {
     }
 
     return { webhook_secret: newSecret };
+  },
+
+  async getWebhookLogs(merchantId, { limit = 20, cursor = null, status = null } = {}) {
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+
+    let query = supabase
+      .from("webhook_delivery_logs")
+      .select(`
+        id,
+        payment_id,
+        status_code,
+        response_body,
+        timestamp,
+        payments!inner(merchant_id, amount, asset, status)
+      `)
+      .eq("payments.merchant_id", merchantId);
+
+    if (status === "success") {
+      query = query.gte("status_code", 200).lt("status_code", 300);
+    } else if (status === "failure") {
+      query = query.or("status_code.lt.200,status_code.gte.300");
+    }
+
+    if (cursor) {
+      try {
+        const decoded = Buffer.from(cursor, "base64").toString("utf-8");
+        const { timestamp, id } = JSON.parse(decoded);
+        query = query.or(`timestamp.lt.${timestamp},and(timestamp.eq.${timestamp},id.lt.${id})`);
+      } catch (e) {
+        const err = new Error("Invalid pagination cursor");
+        err.status = 400;
+        throw err;
+      }
+    }
+
+    const { data: logsData, error } = await query
+      .order("timestamp", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(parsedLimit + 1);
+
+    if (error) {
+      error.status = 500;
+      throw error;
+    }
+
+    const hasNextPage = logsData.length > parsedLimit;
+    const items = hasNextPage ? logsData.slice(0, parsedLimit) : logsData;
+
+    let nextCursor = null;
+    if (hasNextPage) {
+      const lastItem = items[items.length - 1];
+      nextCursor = Buffer.from(
+        JSON.stringify({
+          timestamp: lastItem.timestamp,
+          id: lastItem.id,
+        })
+      ).toString("base64");
+    }
+
+    const logs = items.map((log) => ({
+      id: log.id,
+      payment_id: log.payment_id,
+      status_code: log.status_code,
+      success: log.status_code >= 200 && log.status_code < 300,
+      response_body: log.response_body,
+      timestamp: log.timestamp,
+      payment: {
+        amount: log.payments.amount,
+        asset: log.payments.asset,
+        status: log.payments.status,
+      },
+    }));
+
+    return {
+      logs,
+      next_cursor: nextCursor,
+      limit: parsedLimit,
+    };
   },
 };

@@ -49,7 +49,7 @@ export default function LocaleSwitcher({
         className="bg-transparent text-sm text-white outline-none"
       >
         {locales.map((option) => (
-          <option key={option} value={option} className="bg-slate-950 text-white">
+          <option key={option} value={option} className="bg-night text-white">
             {t(`options.${option}`)}
           </option>
         ))}

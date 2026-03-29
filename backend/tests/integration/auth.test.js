@@ -1,13 +1,15 @@
 import request from "supertest";
 import { createApp } from "../../src/app.js";
 import { closePool } from "../../src/lib/db.js";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
 /**
  * Mock for the Redis client required by createApp().
  */
 const mockRedisClient = {
-  ping: jest.fn().mockResolvedValue("PONG"),
-  on: jest.fn(),
+  ping: vi.fn().mockResolvedValue("PONG"),
+  on: vi.fn(),
+  sendCommand: vi.fn().mockResolvedValue("mocked_hash"),
 };
 
 describe("Unauthorized Access", () => {
@@ -19,7 +21,7 @@ describe("Unauthorized Access", () => {
   });
 
   afterAll(async () => {
-    if (io) io.close();
+    // io is not attached to a listening server in tests, closing it throws Unhandled Rejection
     await closePool();
   });
 

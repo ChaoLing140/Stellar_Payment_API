@@ -8,6 +8,7 @@ import { useHydrateMerchantStore } from "@/lib/merchant-store";
 import MerchantProfileCard from "@/components/MerchantProfileCard";
 import ApiHealthBadge from "@/components/ApiHealthBadge";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
+import ThemeToggle from "@/components/ThemeToggle";
 
 type AppNavLink = {
   href: string;
@@ -110,6 +111,7 @@ export default function Navbar() {
             <LocaleSwitcher className="hidden sm:inline-flex md:hidden" />
             <div className="hidden md:flex items-center gap-3">
               <LocaleSwitcher />
+              <ThemeToggle />
               <ApiHealthBadge />
               <MerchantProfileCard />
             </div>
@@ -125,7 +127,10 @@ export default function Navbar() {
           <div className="mb-4 flex flex-col items-center justify-center gap-4">
             <MerchantProfileCard />
             <ApiHealthBadge />
-            <LocaleSwitcher />
+            <div className="flex gap-4">
+              <ThemeToggle />
+              <LocaleSwitcher />
+            </div>
           </div>
           <div className="flex flex-col gap-4">
             {appNavLinks.map((link) => (

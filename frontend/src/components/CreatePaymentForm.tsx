@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import confetti from "canvas-confetti";
 import CopyButton from "./CopyButton";
+import IntegrationCodeSnippets from "./IntegrationCodeSnippets";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import {
@@ -13,7 +14,7 @@ import {
   useMerchantHydrated,
   useMerchantTrustedAddresses,
 } from "@/lib/merchant-store";
-
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -172,10 +173,33 @@ interface SuccessCardProps {
 }
 
 function SuccessCard({ created, onReset, t }: SuccessCardProps) {
+  const [canShare, setCanShare] = useState(false);
+
   // Fire confetti once on mount
   useEffect(() => {
     fireConfetti();
+    setCanShare(
+      typeof navigator !== "undefined" && typeof navigator.share === "function",
+    );
   }, []);
+
+  const handleShare = async () => {
+    if (!canShare) return;
+
+    try {
+      await navigator.share({
+        title: t("shareTitle"),
+        text: t("shareText"),
+        url: created.payment_link,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+
+      toast.error(t("shareFailed"));
+    }
+  };
 
   return (
     <motion.div
@@ -258,6 +282,44 @@ function SuccessCard({ created, onReset, t }: SuccessCardProps) {
             </p>
           </div>
         </motion.div>
+
+        <motion.div
+          variants={childVariants}
+          className="mt-4 flex flex-wrap gap-2"
+        >
+          {canShare && (
+            <button
+              type="button"
+              onClick={() => void handleShare()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-mint/30 bg-mint/10 px-4 py-2 text-sm font-semibold text-mint transition-colors hover:bg-mint/15"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+              >
+                <path
+                  d="M7 12v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M12 16V4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="m8.5 7.5 3.5-3.5 3.5 3.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {t("shareLink")}
+            </button>
+          )}
+        </motion.div>
       </motion.div>
 
       {/* Reset link */}
@@ -277,40 +339,52 @@ function SuccessCard({ created, onReset, t }: SuccessCardProps) {
 
 export default function CreatePaymentForm() {
   const t = useTranslations("createPaymentForm");
-  const [amount, setAmount] = useState("");
-  const [asset, setAsset] = useState<"XLM" | "USDC">("XLM");
-  const [recipient, setRecipient] = useState("");
-  const [description, setDescription] = useState("");
+  const [view, setView] = useState<"form" | "code">("form");
+  const [amount, setAmount] = useLocalStorage("payment_amount", "");
+  const [asset, setAsset] = useLocalStorage<"XLM" | "USDC">(
+    "payment_asset",
+    "XLM",
+  );
+  const [recipient, setRecipient] = useLocalStorage("payment_recipient", "");
+  const [description, setDescription] = useLocalStorage(
+    "payment_description",
+    "",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [recipientError, setRecipientError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedPayment | null>(null);
-  
-  const [useSessionBranding, setUseSessionBranding] = useState(false);
-  const [branding, setBranding] = useState(DEFAULT_BRANDING);
-  const [selectedTrustedAddress, setSelectedTrustedAddress] = useState("");
-
   const apiKey = useMerchantApiKey();
   const hydrated = useMerchantHydrated();
   const trustedAddresses = useMerchantTrustedAddresses();
-  const [useSessionBranding, setUseSessionBranding] = useLocalStorage("payment_use_branding", false);
-  const [branding, setBranding] = useLocalStorage("payment_branding", DEFAULT_BRANDING);
-  const [selectedTrustedAddress, setSelectedTrustedAddress] = useLocalStorage("payment_trusted_address", "");
-
-  // localStorage-backed state (preserved from original)
   const [useSessionBranding, setUseSessionBranding] = useLocalStorage(
     "payment_use_branding",
-    false
+    false,
   );
   const [branding, setBranding] = useLocalStorage(
     "payment_branding",
-    DEFAULT_BRANDING
+    DEFAULT_BRANDING,
   );
   const [selectedTrustedAddress, setSelectedTrustedAddress] = useLocalStorage(
     "payment_trusted_address",
-    ""
+    "",
   );
-
   useHydrateMerchantStore();
+  const selectedTrustedAddressLabel =
+    trustedAddresses.find((address) => address.id === selectedTrustedAddress)
+      ?.label ?? null;
+  const amountPlaceholder = t("amountPlaceholder", {
+    asset,
+    exampleAmount: asset === "USDC" ? "50.00" : "15.00",
+  });
+  const recipientPlaceholder = selectedTrustedAddressLabel
+    ? t("recipientPlaceholderSelected", {
+        asset,
+        label: selectedTrustedAddressLabel,
+      })
+    : t("recipientPlaceholder", { asset });
+  const descriptionPlaceholder = t("descriptionPlaceholder", { asset });
 
   // ── Rate-limit countdown ──────────────────────────────────
   const [retryAfter, setRetryAfter] = useState(0);
@@ -344,15 +418,20 @@ export default function CreatePaymentForm() {
     e.preventDefault();
     setError(null);
 
+    // Client-side validation
+    let hasError = false;
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      setError(t("invalidAmount"));
-      return;
+      setAmountError("Amount must be greater than 0.");
+      hasError = true;
     }
     if (!STELLAR_ADDRESS_RE.test(recipient.trim())) {
-      setError(t("invalidRecipient"));
-      return;
+      setRecipientError(
+        "Must be a valid Stellar public key (56 characters, starts with G).",
+      );
+      hasError = true;
     }
+    if (hasError) return;
 
     setLoading(true);
     try {
@@ -365,7 +444,7 @@ export default function CreatePaymentForm() {
       if (description.trim()) body.description = description.trim();
       if (useSessionBranding) {
         for (const [key, color] of Object.entries(branding)) {
-          if (!HEX_COLOR_REGEX.test(color)) {
+          if (!HEX_COLOR_REGEX.test(color as string)) {
             setError(t("invalidHexColor", { field: key }));
             setLoading(false);
             return;
@@ -414,6 +493,8 @@ export default function CreatePaymentForm() {
     localStorage.removeItem("payment_branding");
     localStorage.removeItem("payment_trusted_address");
     setError(null);
+    setAmountError(null);
+    setRecipientError(null);
     setRetryAfter(0);
   };
 
@@ -427,7 +508,7 @@ export default function CreatePaymentForm() {
 
   const updateBrandingField = (
     key: keyof typeof DEFAULT_BRANDING,
-    value: string
+    value: string,
   ) => {
     setBranding((current) => ({ ...current, [key]: normalizeHexInput(value) }));
   };
@@ -466,15 +547,67 @@ export default function CreatePaymentForm() {
           t={t}
         />
       ) : (
-        <motion.form
+        <motion.div
           key="form"
           variants={formVariants}
           initial="visible"
           exit="exit"
-          onSubmit={handleSubmit}
           className="flex flex-col gap-6"
-          noValidate
         >
+          {/* Tab bar */}
+          <div className="flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+            <button
+              type="button"
+              onClick={() => setView("form")}
+              className={`relative flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                view === "form" ? "text-black" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              {view === "form" && (
+                <motion.div
+                  layoutId="view-tab-bg"
+                  className="absolute inset-0 rounded-lg bg-mint"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10">{t("generate")}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("code")}
+              className={`relative flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                view === "code" ? "text-black" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              {view === "code" && (
+                <motion.div
+                  layoutId="view-tab-bg"
+                  className="absolute inset-0 rounded-lg bg-mint"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10">{t("integrationCode")}</span>
+            </button>
+          </div>
+
+          {view === "code" ? (
+            <IntegrationCodeSnippets
+              apiKey={apiKey!}
+              amount={amount}
+              asset={asset}
+              recipient={recipient}
+              description={description}
+              usdcIssuer={USDC_ISSUER}
+            />
+          ) : (
+          <motion.form
+            key="payment-form"
+            variants={formVariants}
+            initial="visible"
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-6"
+            noValidate
+          >
           {error && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
@@ -502,10 +635,24 @@ export default function CreatePaymentForm() {
                 step="any"
                 required
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="rounded-xl border border-white/10 bg-white/5 p-3 text-white placeholder:text-slate-600 focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                placeholder="0.00"
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setAmountError(null);
+                }}
+                aria-invalid={!!amountError}
+                aria-describedby={amountError ? "amount-error" : undefined}
+                className={`rounded-xl border bg-white/5 p-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${amountError ? "border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50" : "border-white/10 focus:border-mint/50 focus:ring-mint/50"}`}
+                placeholder={amountPlaceholder}
               />
+              {amountError && (
+                <p
+                  id="amount-error"
+                  role="alert"
+                  className="text-xs text-red-400"
+                >
+                  {amountError}
+                </p>
+              )}
             </div>
 
             {/* Asset */}
@@ -583,12 +730,28 @@ export default function CreatePaymentForm() {
                 type="text"
                 required
                 value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-                className="rounded-xl border border-white/10 bg-white/5 p-3 font-mono text-sm text-white placeholder:font-sans placeholder:text-slate-600 focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
-                placeholder="GABC…XYZ"
+                onChange={(e) => {
+                  setRecipient(e.target.value);
+                  setRecipientError(null);
+                }}
+                aria-invalid={!!recipientError}
+                aria-describedby={
+                  recipientError ? "recipient-error" : undefined
+                }
+                className={`rounded-xl border bg-white/5 p-3 font-mono text-sm text-white placeholder:font-sans placeholder:text-slate-600 focus:outline-none focus:ring-1 ${recipientError ? "border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50" : "border-white/10 focus:border-mint/50 focus:ring-mint/50"}`}
+                placeholder={recipientPlaceholder}
                 autoComplete="off"
                 spellCheck={false}
               />
+              {recipientError && (
+                <p
+                  id="recipient-error"
+                  role="alert"
+                  className="text-xs text-red-400"
+                >
+                  {recipientError}
+                </p>
+              )}
             </div>
 
             {/* Description */}
@@ -608,7 +771,7 @@ export default function CreatePaymentForm() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="rounded-xl border border-white/10 bg-white/5 p-3 text-white placeholder:text-slate-600 focus:border-mint/50 focus:outline-none focus:ring-1 focus:ring-mint/50"
-                placeholder="e.g. Invoice #42"
+                placeholder={descriptionPlaceholder}
               />
             </div>
 
@@ -725,7 +888,9 @@ export default function CreatePaymentForm() {
             )}
             <div className="absolute inset-0 -z-10 bg-mint/20 opacity-0 blur-xl transition-opacity group-hover:opacity-100" />
           </button>
-        </motion.form>
+          </motion.form>
+          )}
+        </motion.div>
       )}
     </AnimatePresence>
   );

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // vi.hoisted makes mockCall available inside the vi.mock factory (which is hoisted above imports)
-const { mockCall, mockTxCall } = vi.hoisted(() => ({
+const { mockCall, mockTxCall, mockFeeStatsCall } = vi.hoisted(() => ({
   mockCall: vi.fn(),
-  mockTxCall: vi.fn()
+  mockTxCall: vi.fn(),
+  mockFeeStatsCall: vi.fn(),
 }))
 
 vi.mock('stellar-sdk', () => {
@@ -11,6 +12,7 @@ vi.mock('stellar-sdk', () => {
   MockAsset.native = vi.fn(() => ({ isNative: () => true }))
 
   const MockServer = vi.fn(() => ({
+    feeStats: mockFeeStatsCall,
     payments: () => ({
       forAccount: () => ({
         order: () => ({
@@ -32,7 +34,7 @@ vi.mock('stellar-sdk', () => {
   return { Asset: MockAsset, Horizon: { Server: MockServer } }
 })
 
-import { findMatchingPayment } from './stellar.js'
+import { findMatchingPayment, getNetworkFeeStats } from './stellar.js'
 
 // Helper to build a payment record with sensible defaults
 const makePayment = (overrides = {}) => ({
@@ -51,6 +53,7 @@ describe('findMatchingPayment', () => {
   beforeEach(() => {
     mockCall.mockReset()
     mockTxCall.mockReset()
+    mockFeeStatsCall.mockReset()
   })
 
   it('returns matching XLM payment', async () => {
@@ -224,6 +227,31 @@ describe('findMatchingPayment', () => {
     })
 
     expect(result).toEqual({ id: 'op-first', transaction_hash: 'tx-first', is_multisig: false })
+  })
+
+  it('returns a fee estimate that responds to current fee stats', async () => {
+    mockFeeStatsCall.mockResolvedValue({
+      last_ledger_base_fee: '100',
+      fee_charged: {
+        mode: '250',
+        p50: '200'
+      },
+      max_fee: {
+        mode: '300'
+      }
+    })
+
+    const result = await getNetworkFeeStats(1)
+
+    expect(result).toMatchObject({
+      network: 'testnet',
+      horizonUrl: 'https://horizon-testnet.stellar.org',
+      operationCount: 1,
+      lastLedgerBaseFee: 100,
+      recommendedFeeStroops: 250,
+      totalFeeStroops: 250,
+      totalFeeXlm: '0.0000250'
+    })
   })
 
   // ── Memo matching (Issue #16) ──────────────────────────────────────

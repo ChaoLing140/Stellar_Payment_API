@@ -54,10 +54,25 @@ describe("createApiKeyAuth", () => {
 
   beforeEach(() => {
     maybeSingle = vi.fn();
-    isMock = vi.fn(() => ({ maybeSingle }));
-    eq = vi.fn(() => ({ is: isMock }));
-    select = vi.fn(() => ({ eq }));
-    from = vi.fn(() => ({ select }));
+    isMock = vi.fn();
+    const eqMock = vi.fn();
+    const selectMock = vi.fn();
+
+    const chain = {
+      select: selectMock,
+      eq: eqMock,
+      is: isMock,
+      maybeSingle,
+    };
+
+    selectMock.mockReturnValue(chain);
+    eqMock.mockReturnValue(chain);
+    from = vi.fn(() => chain);
+    select = selectMock;
+    eq = eqMock;
+
+    isMock.mockReturnValue(chain);
+
     supabaseClient = { from };
     usageRecorder = vi.fn();
     middleware = createApiKeyAuth({ supabaseClient, usageRecorder });
@@ -85,7 +100,7 @@ describe("createApiKeyAuth", () => {
 
     expect(from).toHaveBeenCalledWith("merchants");
     expect(select).toHaveBeenCalledWith(
-      "id, email, business_name, notification_email, branding_config, merchant_settings, webhook_secret, webhook_secret_old, webhook_secret_expiry, webhook_version, payment_limits",
+      "id, email, business_name, notification_email, branding_config, merchant_settings, webhook_secret, webhook_secret_old, webhook_secret_expiry, webhook_version, payment_limits, api_key, api_key_expires_at, api_key_old, api_key_old_expires_at",
     );
     expect(eq).toHaveBeenCalledWith("api_key", "invalid-key");
     expect(isMock).toHaveBeenCalledWith("deleted_at", null);
