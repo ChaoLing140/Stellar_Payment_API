@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: ghcr.io/wheval/stellar_payment_api:latest
+    image: ghcr.io/emdevelopa/stellar_payment_api:latest
     container_name: stellar_payment_api
     ports:
       - "4000:4000"
