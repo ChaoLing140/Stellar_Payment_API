@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { registerMerchant, type Merchant } from "../lib/auth";
+import { toast } from "sonner";
 import MaskedValue from "./MaskedValue";
 import toast from "react-hot-toast";
 import zxcvbn from "zxcvbn";

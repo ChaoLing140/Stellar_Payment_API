@@ -11,7 +11,7 @@ import { createReceiptPdf } from "@/lib/receipt-pdf";
 import CheckoutQrModal from "@/components/CheckoutQrModal";
 import CopyButton from "@/components/CopyButton";
 import WalletSelector from "@/components/WalletSelector";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { QRCodeSVG } from "qrcode.react";

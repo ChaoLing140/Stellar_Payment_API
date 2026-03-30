@@ -5,8 +5,8 @@ import { useTranslations } from "next-intl";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import confetti from "canvas-confetti";
 import CopyButton from "./CopyButton";
+import { toast } from "sonner";
 import IntegrationCodeSnippets from "./IntegrationCodeSnippets";
-import toast from "react-hot-toast";
 import Link from "next/link";
 import {
   useHydrateMerchantStore,

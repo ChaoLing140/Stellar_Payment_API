@@ -3,10 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
-import toast from "react-hot-toast";
-import DangerZone from "@/components/DangerZone";
-import WebhookHealthIndicator from "@/components/WebhookHealthIndicator";
-import { EmailReceiptPreview } from "@/components/EmailReceiptPreview";
+import { toast } from "sonner";
 import {
   useHydrateMerchantStore,
   useMerchantApiKey,
