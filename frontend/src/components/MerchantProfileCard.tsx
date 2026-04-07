@@ -108,6 +108,27 @@ export default function MerchantProfileCard() {
             {/* Menu Items */}
             <div className="flex flex-col gap-1.5">
               <Link
+                href="/dashboard"
+                onClick={() => setShowDropdown(false)}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#0A0A0A] bg-[#F5F5F5] transition-all hover:bg-[#E8E8E8]"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                  />
+                </svg>
+                Dashboard
+              </Link>
+
+              <Link
                 href="/settings"
                 onClick={() => setShowDropdown(false)}
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#6B6B6B] transition-all hover:bg-[#F5F5F5] hover:text-[#0A0A0A]"
@@ -176,19 +197,7 @@ export default function MerchantProfileCard() {
                 Logout Account
               </button>
             </div>
-
-            {/* Network Info */}
-            <div className="mt-5 rounded-xl border border-[#E8E8E8] bg-[#F9F9F9] p-4">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[#6B6B6B]">
-                Partner Since
-              </p>
-              <p className="mt-1 text-xs font-bold text-[#0A0A0A]">
-                {merchant?.created_at
-                  ? new Date(merchant.created_at).toLocaleDateString()
-                  : "N/A"}
-              </p>
-            </div>
-</div>
+          </div>
         </>
       )}
     </div>

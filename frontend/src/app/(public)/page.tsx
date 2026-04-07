@@ -1,6 +1,5 @@
 "use client";
 
-import GuestGuard from "@/components/GuestGuard";
 import SystemStatus from "@/components/SystemStatus";
 import Link from "next/link";
 import { useState } from "react";
@@ -510,18 +509,16 @@ function Footer() {
 
 export default function Home() {
   return (
-    <GuestGuard>
-      <main className="relative min-h-screen bg-white overflow-x-hidden">
-        <HeroSection />
-        <IntegrationModesSection />
-        <PricingSection />
-        <FeaturesSection />
-        <HowItWorksSection />
-        <CodeSnippetSection />
-        <PayWithLinkDemo />
-        <CTASection />
-        <Footer />
-      </main>
-    </GuestGuard>
+    <main className="relative min-h-screen bg-white overflow-x-hidden">
+      <HeroSection />
+      <IntegrationModesSection />
+      <PricingSection />
+      <FeaturesSection />
+      <HowItWorksSection />
+      <CodeSnippetSection />
+      <PayWithLinkDemo />
+      <CTASection />
+      <Footer />
+    </main>
   );
 }

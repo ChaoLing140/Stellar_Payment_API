@@ -108,9 +108,11 @@ export const useMerchantStore = create<MerchantStore>((set) => ({
 
   hydrate: () => {
     const { token, session } = readInitialToken();
-    const apiKey =
-      typeof window === "undefined" ? null : localStorage.getItem(API_KEY_KEY);
     const merchant = readInitialMerchant();
+    const apiKey =
+      (typeof window === "undefined" ? null : localStorage.getItem(API_KEY_KEY)) || 
+      merchant?.api_key || 
+      null;
 
     // Dev Bypass: Provide mock data if enabled and no session exists
     const isBypass = typeof window !== "undefined" && 
@@ -181,11 +183,17 @@ export const useMerchantStore = create<MerchantStore>((set) => ({
     if (typeof window !== "undefined") {
       if (merchant) {
         localStorage.setItem(MERCHANT_KEY, JSON.stringify(merchant));
+        if (merchant.api_key) {
+           localStorage.setItem(API_KEY_KEY, merchant.api_key);
+        }
       } else {
         localStorage.removeItem(MERCHANT_KEY);
       }
     }
-    set({ merchant });
+    set((state) => ({ 
+      merchant,
+      apiKey: merchant?.api_key || state.apiKey 
+    }));
   },
 
   addTrustedAddress: (address) => {
