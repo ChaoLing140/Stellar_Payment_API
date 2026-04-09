@@ -74,6 +74,8 @@ Requirements for `X402_PAYER_SECRET` wallet:
 
 ## Production `payOnStellar` sample
 
+<FrameworkTabs>
+  <FrameworkTab label="Express (Node.js) / Next.js">
 `lib/payOnStellar.js`
 
 ```js
@@ -122,6 +124,56 @@ export async function payOnStellar({ amount, recipient, memo, assetIssuer }) {
   return result.hash;
 }
 ```
+  </FrameworkTab>
+  <FrameworkTab label="Python (Django)">
+`payment_helpers.py`
+
+```python
+import os
+from stellar_sdk import Server, Keypair, Network, TransactionBuilder, Asset
+
+def pay_on_stellar(amount, recipient, memo, asset_issuer):
+    secret = os.getenv("X402_PAYER_SECRET")
+    if not secret:
+        raise Exception("X402_PAYER_SECRET is missing")
+        
+    if not amount or not recipient or not memo or not asset_issuer:
+        raise Exception("Missing x402 challenge payment fields")
+        
+    if len(memo.encode("utf-8")) > 28:
+        raise Exception("x402 memo exceeds 28 bytes")
+        
+    horizon_url = os.getenv("STELLAR_HORIZON_URL", "https://horizon-testnet.stellar.org")
+    network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE if os.getenv("STELLAR_NETWORK") == "public" else Network.TESTNET_NETWORK_PASSPHRASE
+    
+    server = Server(horizon_url)
+    source_keypair = Keypair.from_secret(secret)
+    source_account = server.load_account(source_keypair.public_key)
+    base_fee = server.fetch_base_fee()
+    
+    tx = TransactionBuilder(
+        source_account,
+        network_passphrase=network_passphrase,
+        base_fee=base_fee
+    )
+    
+    tx.append_payment_op(
+        destination=recipient,
+        asset=Asset("USDC", asset_issuer),
+        amount=str(amount)
+    )
+    
+    tx.add_text_memo(memo)
+    tx.set_timeout(30)
+    
+    transaction = tx.build()
+    transaction.sign(source_keypair)
+    
+    response = server.submit_transaction(transaction)
+    return response.get("hash")
+```
+  </FrameworkTab>
+</FrameworkTabs>
 
 ---
 
