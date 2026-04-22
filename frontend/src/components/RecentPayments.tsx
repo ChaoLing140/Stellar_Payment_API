@@ -109,14 +109,14 @@ function buildParams(
 const STATUS_STYLE: Record<string, string> = {
   confirmed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
   failed: "bg-red-50 text-red-700 border-red-200",
   refunded: "bg-blue-50 text-blue-700 border-blue-200",
 };
 const STATUS_DOT: Record<string, string> = {
   confirmed: "bg-emerald-500",
   completed: "bg-emerald-500",
-  pending: "bg-yellow-500",
+  pending: "bg-amber-500",
   failed: "bg-red-500",
   refunded: "bg-blue-500",
 };
@@ -517,7 +517,7 @@ export default function RecentPayments({
       <div className="overflow-x-auto rounded-2xl border border-[#E8E8E8]">
         <table className="min-w-[760px] w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-[#E8E8E8] bg-[#F9F9F9]">
+            <tr className="border-b border-[#E8E8E8] bg-[#F9F9F9] hover:bg-[#F5F5F5] transition-colors">
               <th className="px-3 py-3 sm:px-5"><SortBtn active={sortColumn==="status"} dir={sortDirection} onClick={() => handleSort("status")}>{t("tableStatus")}</SortBtn></th>
               <th className="px-3 py-3 sm:px-5"><SortBtn active={sortColumn==="amount"} dir={sortDirection} onClick={() => handleSort("amount")}>{t("tableAmount")}</SortBtn></th>
               <th className="px-3 py-3 sm:px-5"><SortBtn active={sortColumn==="recipient"} dir={sortDirection} onClick={() => handleSort("recipient")}>{t("tableRecipient")}</SortBtn></th>
