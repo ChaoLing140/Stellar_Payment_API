@@ -112,8 +112,8 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="text-sm font-bold text-[#0A0A0A]">{t("chooseWallet")}</p>
-        <p className="text-xs text-[#6B6B6B] mt-0.5">Connect your Stellar wallet to complete this payment.</p>
+        <p className="text-sm font-bold text-white">{t("chooseWallet")}</p>
+        <p className="text-xs text-slate-400 mt-0.5">Connect your Stellar wallet to complete this payment.</p>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -130,12 +130,12 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
               type="button"
               disabled={isDisabled || connecting !== null}
               onClick={() => handleSelect(p.id)}
-              className="group relative flex h-16 w-full items-center gap-4 rounded-2xl border border-[#E8E8E8] bg-white px-5 text-left shadow-sm transition-all hover:border-[var(--pluto-400)] hover:shadow-[0_4px_20px_rgba(74,111,165,0.12)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="group relative flex h-16 w-full items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-left transition-all hover:border-mint/30 hover:bg-mint/5 hover:shadow-[0_0_20px_rgba(94,242,192,0.08)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {/* Icon */}
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E8E8E8] bg-[#F9F9F9] transition-all group-hover:border-[var(--pluto-200)] group-hover:bg-[var(--pluto-50)]">
+              {/* Icon Container */}
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 transition-all group-hover:border-mint/20 group-hover:bg-mint/10">
                 {ICONS[p.id] ?? (
-                  <svg className="h-5 w-5 text-[#6B6B6B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                 )}
@@ -144,14 +144,14 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
               {/* Label */}
               <div className="flex flex-1 flex-col gap-0.5">
                 {isConnecting ? (
-                  <span className="flex items-center gap-2 text-sm font-bold text-[#0A0A0A]">
+                  <span className="flex items-center gap-2 text-sm font-bold text-white">
                     <Spinner size="sm" />
                     {isWc ? t("walletConnectWaiting") : "Connecting…"}
                   </span>
                 ) : (
                   <>
-                    <span className="text-sm font-bold text-[#0A0A0A]">{p.name}</span>
-                    <span className="text-[10px] font-medium text-[#6B6B6B]">
+                    <span className="text-sm font-bold text-white transition-colors group-hover:text-mint">{p.name}</span>
+                    <span className="text-[10px] font-medium text-slate-500">
                       {isDisabled
                         ? (isWc ? t("noProjectId") : t("notInstalled"))
                         : SUBTITLES[p.id] ?? "Click to connect"}
@@ -162,7 +162,7 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
 
               {/* Arrow */}
               {!isConnecting && !isDisabled && (
-                <svg className="h-4 w-4 shrink-0 text-[#C0C0C0] group-hover:text-[var(--pluto-500)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-4 w-4 shrink-0 text-slate-600 group-hover:text-mint transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               )}
@@ -173,17 +173,17 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
 
       {/* WalletConnect QR */}
       {wcUri && (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-[#E8E8E8] bg-[#F9F9F9] p-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-[#6B6B6B]">{t("scanTitle")}</p>
-          <div className="rounded-xl bg-white border border-[#E8E8E8] p-3">
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{t("scanTitle")}</p>
+          <div className="rounded-xl bg-white p-3 shadow-[0_0_20px_rgba(255,255,255,0.05)]">
             <QRCodeSVG value={wcUri} size={200} level="M" fgColor="#0A0A0A" bgColor="#ffffff" />
           </div>
-          <p className="text-[10px] text-[#6B6B6B] text-center">Scan with Freighter mobile or any WalletConnect-compatible wallet</p>
+          <p className="text-[10px] text-slate-500 text-center">Scan with Freighter mobile or any WalletConnect-compatible wallet</p>
         </div>
       )}
 
       {(wcError || connectError) && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center text-sm text-red-600">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-400">
           {wcError || connectError}
         </div>
       )}
@@ -194,7 +194,7 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
           href="https://freighter.app"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-center text-[10px] font-bold uppercase tracking-widest text-[var(--pluto-500)] hover:text-[var(--pluto-700)] transition-colors"
+          className="text-center text-[10px] font-bold uppercase tracking-widest text-mint hover:text-glow transition-colors"
         >
           Don&apos;t have Freighter? Install it →
         </a>

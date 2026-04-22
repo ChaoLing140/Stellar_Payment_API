@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import AnalyticsCards from "@/components/AnalyticsCards";
+import ActivityFeed from "@/components/ActivityFeed";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 import Link from "next/link";
 import {
@@ -11,9 +13,9 @@ import {
 } from "@/lib/merchant-store";
 import { useTranslations } from "next-intl";
 import FirstApiKeyModal from "@/components/FirstApiKeyModal";
-import FirstPaymentCelebration from "@/components/FirstPaymentCelebration";
 import PaymentMetrics from "@/components/PaymentMetrics";
 import RecentPayments from "@/components/RecentPayments";
+import WithdrawModal from "@/components/WithdrawModal";
 
 export default function DashboardPage() {
   const t = useTranslations("dashboardPage");
@@ -47,10 +49,10 @@ export default function DashboardPage() {
       <header className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-bold tracking-tight text-white">
-            {merchant?.business_name ?? "Merchant Hub"}
+            Merchant Hub
           </h1>
           <p className="text-slate-400">
-            {t("description")}
+            Overview of your Stellar payment ecosystem and performance.
           </p>
         </div>
 
@@ -62,7 +64,7 @@ export default function DashboardPage() {
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
-            {t("createPaymentLink")}
+            Create Link
             <div className="absolute inset-0 -z-10 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
           </Link>
 
@@ -121,7 +123,7 @@ export default function DashboardPage() {
               href="/payments" 
               className="group flex items-center gap-1.5 text-sm text-mint hover:text-glow transition-all"
             >
-              {t("viewAllPayments")}
+              View all payments
               <svg className="h-4 w-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7-7 7" />
               </svg>
@@ -135,6 +137,7 @@ export default function DashboardPage() {
 
       <FirstApiKeyModal isOpen={isFirstKeyModalOpen} onClose={() => setIsFirstKeyModalOpen(false)} />
       <FirstPaymentCelebration />
+      <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
     </div>
   );
 }
