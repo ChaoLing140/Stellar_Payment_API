@@ -107,11 +107,11 @@ function buildParams(
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  confirmed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  pending: "bg-amber-50 text-amber-700 border-amber-200",
-  failed: "bg-red-50 text-red-700 border-red-200",
-  refunded: "bg-blue-50 text-blue-700 border-blue-200",
+  confirmed: "bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm",
+  completed: "bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm",
+  pending: "bg-amber-50 text-amber-700 border-amber-200 shadow-sm",
+  failed: "bg-red-50 text-red-700 border-red-200 shadow-sm",
+  refunded: "bg-blue-50 text-blue-700 border-blue-200 shadow-sm",
 };
 const STATUS_DOT: Record<string, string> = {
   confirmed: "bg-emerald-500",
@@ -532,7 +532,7 @@ export default function RecentPayments({
             ) : sortedPayments.map(payment => (
               <tr key={payment.id}
                 onClick={() => { setSelectedPayment(payment.id); setIsSheetOpen(true); }}
-                className={`group cursor-pointer transition-all duration-200 ease-in-out hover:bg-[#F9F9F9] hover:shadow-sm hover:border-l-2 hover:border-l-[var(--pluto-500)] active:bg-[#F5F5F5] active:scale-[0.995] ${flashedIds.has(payment.id) ? "bg-emerald-50" : ""}`}
+                className={`group cursor-pointer border-l-2 border-l-transparent transition-all duration-200 ease-in-out hover:bg-[#F9F9F9] hover:shadow-sm hover:border-l-[var(--pluto-500)] active:bg-[#F5F5F5] active:scale-[0.995] ${flashedIds.has(payment.id) ? "bg-emerald-50 border-l-emerald-500" : ""}`}
               >
                 <td className="px-3 py-4 sm:px-5"><StatusBadge status={payment.status} /></td>
                 <td className="px-3 py-4 sm:px-5">
