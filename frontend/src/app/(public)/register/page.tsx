@@ -7,7 +7,7 @@ export default function RegisterPage() {
     <GuestGuard>
     <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-10 px-6 py-14 md:py-20 bg-white">
       <header className="flex flex-col gap-6 text-center">
-        <p className="font-bold text-[10px] uppercase tracking-[0.4em] text-[#6B6B6B]">Onboarding</p>
+        <p className="font-bold text-[10px] uppercase tracking-[0.4em] text-[#6B6B6B] animate-pulse">Onboarding</p>
         <h1 className="text-4xl md:text-5xl font-bold text-[#0A0A0A] tracking-tight font-serif uppercase">Join PLUTO</h1>
         <p className="text-sm font-medium text-[#6B6B6B] leading-relaxed">
           Create your merchant profile to start accepting modern payments and managing assets on the PLUTO infrastructure.

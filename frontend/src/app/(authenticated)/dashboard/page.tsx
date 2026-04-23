@@ -15,7 +15,7 @@ import { useTranslations } from "next-intl";
 import FirstApiKeyModal from "@/components/FirstApiKeyModal";
 import PaymentMetrics from "@/components/PaymentMetrics";
 import RecentPayments from "@/components/RecentPayments";
-import WithdrawalModal from "@/components/WithdrawalModal";
+import WithdrawModal from "@/components/WithdrawModal";
 import FirstPaymentCelebration from "@/components/FirstPaymentCelebration";
 
 export default function DashboardPage() {

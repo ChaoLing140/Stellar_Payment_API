@@ -84,6 +84,7 @@ const NavLinks = memo(function NavLinks({
 
   return (
     <nav aria-label="Dashboard navigation" className="flex flex-1 flex-col gap-1 px-4 py-6">
+      <ul className="flex flex-col gap-1">
       {navItems.map((item) => {
         const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const isHighlight = "highlight" in item && item.highlight;
@@ -101,24 +102,27 @@ const NavLinks = memo(function NavLinks({
         }
 
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            prefetch={true}
-            onClick={onNavigate}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] ${
-              isActive
-                ? "bg-[var(--pluto-500)] text-white"
-                : isHighlight
-                ? "border border-[var(--pluto-200)] bg-[var(--pluto-50)] text-[var(--pluto-700)] hover:border-[var(--pluto-500)] hover:bg-[var(--pluto-500)] hover:text-white"
-                : "text-pluto-600 hover:bg-[var(--pluto-100)] hover:text-[var(--pluto-800)]"
-            }`}
-          >
-            <span className="shrink-0">{item.icon}</span>
-            <span className="text-xs font-semibold tracking-wide">{item.label}</span>
-          </Link>
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              prefetch={true}
+              onClick={onNavigate}
+              aria-current={isActive ? "page" : undefined}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] ${
+                isActive
+                  ? "bg-[var(--pluto-500)] text-white"
+                  : isHighlight
+                  ? "border border-[var(--pluto-200)] bg-[var(--pluto-50)] text-[var(--pluto-700)] hover:border-[var(--pluto-500)] hover:bg-[var(--pluto-500)] hover:text-white"
+                  : "text-pluto-600 hover:bg-[var(--pluto-100)] hover:text-[var(--pluto-800)]"
+              }`}
+            >
+              <span className="shrink-0">{item.icon}</span>
+              <span className="text-xs font-semibold tracking-wide">{item.label}</span>
+            </Link>
+          </li>
         );
       })}
+      </ul>
 
       <div className="mt-auto pt-4 border-t border-pluto-200">
         <Link href="/" onClick={onNavigate}

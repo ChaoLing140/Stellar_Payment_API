@@ -857,8 +857,72 @@ export default function PaymentHistoryPage() {
         </p>
       </div>
 
-      {/* Payment Table */}
-      <div className="overflow-x-auto rounded-xl border border-[#E8E8E8]">
+      {/* Payment List (Mobile Card View) */}
+      <div className="flex flex-col gap-4 sm:hidden">
+        {payments.map((payment) => (
+          <div
+            key={payment.id}
+            onClick={() => handlePaymentClick(payment.id)}
+            className={`cursor-pointer rounded-2xl border border-[#E8E8E8] bg-white p-5 transition-all active:scale-[0.98] shadow-sm ${
+              flashedIds.has(payment.id)
+                ? "animate-payment-confirmed bg-green-500/10 border-green-500/30"
+                : ""
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span
+                className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                  payment.status === "confirmed"
+                    ? "bg-green-500/20 text-green-400"
+                    : payment.status === "failed"
+                    ? "bg-red-500/20 text-red-400"
+                    : payment.status === "refunded"
+                    ? "bg-blue-500/20 text-blue-400"
+                    : "bg-yellow-500/20 text-yellow-400"
+                }`}
+              >
+                {toStatusLabel(t, payment.status)}
+              </span>
+              <p className="text-[10px] font-bold text-[#6B6B6B] uppercase tracking-widest">
+                {new Date(payment.created_at).toLocaleDateString(locale, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            </div>
+            <div className="flex items-end justify-between">
+              <div className="min-w-0">
+                <p className="text-xl font-bold text-[#0A0A0A] tracking-tight truncate">
+                  {payment.amount} {payment.asset}
+                </p>
+                <p className="mt-1 text-xs font-medium text-[#6B6B6B] truncate">
+                  {payment.description || "No description"}
+                </p>
+              </div>
+              <div className="shrink-0 text-[var(--pluto-500)]">
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Payment Table (Desktop View) */}
+      <div className="hidden sm:block overflow-x-auto rounded-xl border border-[#E8E8E8]">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-[#E8E8E8] bg-[#F9F9F9]">

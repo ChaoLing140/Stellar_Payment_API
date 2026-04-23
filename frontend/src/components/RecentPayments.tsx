@@ -555,7 +555,7 @@ export default function RecentPayments({
                   </button>
                 </td>
               </tr>
-            )))}
+            ))}
           </tbody>
         </table>
       </div>
