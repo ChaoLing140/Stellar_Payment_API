@@ -157,10 +157,10 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3 sm:gap-4 w-full">
       <div>
-        <p className="text-sm font-bold text-white">{t("chooseWallet")}</p>
-        <p className="mt-0.5 text-xs text-slate-400">{t("description")}</p>
+        <p className="text-sm font-bold text-[#0A0A0A]">{t("chooseWallet")}</p>
+        <p className="mt-0.5 text-xs text-[#6B6B6B]">{t("description")}</p>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -177,13 +177,13 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
               disabled={isDisabled || connecting !== null}
               onClick={() => handleSelect(p.id)}
               aria-busy={isConnecting}
-              className="group relative flex h-16 w-full items-center gap-4 rounded-2xl border border-[#E8E8E8] bg-white px-5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-[var(--pluto-400)] hover:shadow-[0_6px_22px_rgba(74,111,165,0.12)] active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] disabled:cursor-not-allowed disabled:opacity-40"
-              className="group relative flex h-16 w-full items-center gap-4 rounded-2xl border border-[#E8E8E8] bg-white px-5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-[var(--pluto-400)] hover:shadow-[0_6px_22px_rgba(74,111,165,0.12)] active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="group relative flex h-14 sm:h-16 w-full items-center gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-[#E8E8E8] bg-white px-4 sm:px-5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-[var(--pluto-400)] hover:shadow-[0_6px_22px_rgba(74,111,165,0.12)] active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-500)] disabled:cursor-not-allowed disabled:opacity-40"
+
             >
               {/* Icon */}
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E8E8E8] bg-[#F9F9F9] transition-colors duration-200 group-hover:border-[var(--pluto-200)] group-hover:bg-[var(--pluto-50)]">
                 {ICONS[p.id] ?? (
-                  <svg className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-[#6B6B6B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                 )}
@@ -192,14 +192,14 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
               {/* Label */}
               <div className="flex flex-1 flex-col gap-0.5">
                 {isConnecting ? (
-                  <span className="flex items-center gap-2 text-sm font-bold text-white">
+                  <span className="flex items-center gap-2 text-sm font-bold text-[#0A0A0A]">
                     <Spinner size="sm" />
                     {isWc ? t("walletConnectWaiting") : "Connecting…"}
                   </span>
                 ) : (
                   <>
-                    <span className="text-sm font-bold text-white transition-colors group-hover:text-mint">{p.name}</span>
-                    <span className="text-[10px] font-medium text-slate-500">
+                    <span className="text-sm font-bold text-[#0A0A0A] transition-colors group-hover:text-[var(--pluto-600)]">{p.name}</span>
+                    <span className="text-[10px] font-medium text-[#6B6B6B]">
                       {isDisabled
                         ? (isWc ? t("noProjectId") : t("notInstalled"))
                         : SUBTITLES[p.id] ?? t("tapToConnect")}
@@ -221,12 +221,12 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
 
       {/* WalletConnect QR */}
       {wcUri && (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-6" aria-live="polite">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{t("scanTitle")}</p>
-          <div className="rounded-xl bg-white p-3 shadow-[0_0_20px_rgba(255,255,255,0.05)]">
-            <QRCodeSVG value={wcUri} size={200} level="M" fgColor="#0A0A0A" bgColor="#ffffff" />
+        <div className="flex flex-col items-center gap-3 rounded-xl sm:rounded-2xl border border-[#E8E8E8] bg-[#F9F9F9] p-4 sm:p-6" aria-live="polite">
+          <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-[#6B6B6B]">{t("scanTitle")}</p>
+          <div className="rounded-xl bg-white p-3 shadow-sm border border-[#E8E8E8]">
+            <QRCodeSVG value={wcUri} size={200} level="M" fgColor="#0A0A0A" bgColor="#ffffff" className="max-w-full h-auto" />
           </div>
-          <p className="text-center text-[10px] text-slate-500">{t("scanDescription")}</p>
+          <p className="text-center text-[10px] text-[#6B6B6B] px-2">{t("scanDescription")}</p>
         </div>
       )}
 
