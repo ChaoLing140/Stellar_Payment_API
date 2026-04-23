@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import Link from "next/link";
 import Image from "next/image";
@@ -84,6 +84,8 @@ function EyeIcon({ open }: { open: boolean }) {
       fill="none"
       stroke="currentColor"
       strokeWidth={1.8}
+      aria-hidden="true"
+      focusable="false"
     >
       <path
         d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"
@@ -105,6 +107,8 @@ function EyeIcon({ open }: { open: boolean }) {
       fill="none"
       stroke="currentColor"
       strokeWidth={1.8}
+      aria-hidden="true"
+      focusable="false"
     >
       <path
         d="M17.94 17.94A10.1 10.1 0 0 1 12 19c-6.4 0-10-7-10-7a18.1 18.1 0 0 1 5.06-5.94M9.9 4.24A9.1 9.1 0 0 1 12 4c6.4 0 10 7 10 7a18.1 18.1 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
@@ -301,7 +305,7 @@ export default function SettingsPage() {
     load();
   }, [apiKey]);
 
-  const confirmRotate = async () => {
+  const confirmRotate = useCallback(async () => {
     if (!apiKey) return;
     setRotating(true);
     setRotateError(null);
@@ -325,32 +329,35 @@ export default function SettingsPage() {
     } finally {
       setRotating(false);
     }
-  };
+  }, [apiKey, setApiKey]);
 
-  const updateBrandingField = (
-    key: keyof typeof DEFAULT_BRANDING,
-    value: string | null,
-  ) => {
-    setBranding((c) => ({
-      ...c,
-      [key]: key === "logo_url" ? value : normalizeHexInput(value as string),
-    }));
-  };
+  const updateBrandingField = useCallback(
+    (key: keyof typeof DEFAULT_BRANDING, value: string | null) => {
+      setBranding((c) => ({
+        ...c,
+        [key]: key === "logo_url" ? value : normalizeHexInput(value as string),
+      }));
+    },
+    [],
+  );
 
-  const onDrop = useCallback((files: File[]) => {
-    const file = files[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be under 2MB");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateBrandingField("logo_url", reader.result as string);
-      toast.success("Logo uploaded!");
-    };
-    reader.readAsDataURL(file);
-  }, []);
+  const onDrop = useCallback(
+    (files: File[]) => {
+      const file = files[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("Image must be under 2MB");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        updateBrandingField("logo_url", reader.result as string);
+        toast.success("Logo uploaded!");
+      };
+      reader.readAsDataURL(file);
+    },
+    [updateBrandingField],
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -362,7 +369,7 @@ export default function SettingsPage() {
     multiple: false,
   });
 
-  const saveBranding = async () => {
+  const saveBranding = useCallback(async () => {
     if (!apiKey) return;
     setBrandingError(null);
     for (const [k, v] of Object.entries(branding)) {
@@ -391,9 +398,9 @@ export default function SettingsPage() {
     } finally {
       setSavingBranding(false);
     }
-  };
+  }, [apiKey, branding]);
 
-  const validateWebhookUrl = (url: string) => {
+  const validateWebhookUrl = useCallback((url: string) => {
     if (!url.trim()) return null;
     try {
       const p = new URL(url);
@@ -402,9 +409,17 @@ export default function SettingsPage() {
     } catch {
       return "Invalid URL (e.g. https://example.com/webhook)";
     }
-  };
+  }, []);
 
-  const saveWebhookUrl = async () => {
+  const handleWebhookUrlChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setWebhookUrl(e.target.value);
+      setWebhookUrlError(validateWebhookUrl(e.target.value));
+    },
+    [validateWebhookUrl],
+  );
+
+  const saveWebhookUrl = useCallback(async () => {
     if (!apiKey) return;
     const err = validateWebhookUrl(webhookUrl);
     if (err) {
@@ -434,9 +449,9 @@ export default function SettingsPage() {
     } finally {
       setSavingWebhook(false);
     }
-  };
+  }, [apiKey, webhookUrl, validateWebhookUrl]);
 
-  const verifyWebhookDomain = async () => {
+  const verifyWebhookDomain = useCallback(async () => {
     if (!apiKey) return;
     setVerifyingWebhookDomain(true);
     setWebhookSaveError(null);
@@ -462,9 +477,9 @@ export default function SettingsPage() {
     } finally {
       setVerifyingWebhookDomain(false);
     }
-  };
+  }, [apiKey]);
 
-  const regenerateWebhookSecret = async () => {
+  const regenerateWebhookSecret = useCallback(async () => {
     if (!apiKey) return;
     setRegeneratingSecret(true);
     setWebhookSaveError(null);
@@ -487,9 +502,9 @@ export default function SettingsPage() {
     } finally {
       setRegeneratingSecret(false);
     }
-  };
+  }, [apiKey]);
 
-  const testWebhook = async () => {
+  const testWebhook = useCallback(async () => {
     if (!apiKey) return;
     setTestingWebhook(true);
     setWebhookSaveError(null);
@@ -508,7 +523,22 @@ export default function SettingsPage() {
     } finally {
       setTestingWebhook(false);
     }
-  };
+  }, [apiKey]);
+
+  const displayKey = useMemo(
+    () => (revealed ? apiKey : mask(apiKey ?? "")),
+    [revealed, apiKey],
+  );
+  const lowContrastWarning = useMemo(
+    () =>
+      contrastRatio(branding.primary_color, branding.background_color) < 4.5 ||
+      contrastRatio(branding.secondary_color, branding.background_color) < 3,
+    [branding.primary_color, branding.secondary_color, branding.background_color],
+  );
+  const isVerified = useMemo(
+    () => webhookVerification?.status === "verified",
+    [webhookVerification],
+  );
 
   if (!hydrated) return null;
 
@@ -539,12 +569,6 @@ export default function SettingsPage() {
     );
   }
 
-  const displayKey = revealed ? apiKey : mask(apiKey);
-  const lowContrastWarning =
-    contrastRatio(branding.primary_color, branding.background_color) < 4.5 ||
-    contrastRatio(branding.secondary_color, branding.background_color) < 3;
-  const isVerified = webhookVerification?.status === "verified";
-
   return (
     <div className="flex flex-col gap-8 animate-in fade-in duration-500">
       {/* Page header */}
@@ -563,11 +587,19 @@ export default function SettingsPage() {
       {/* Two-column layout */}
       <div className="flex gap-8 items-start">
         {/* Left nav */}
-        <nav className="hidden lg:flex w-52 shrink-0 flex-col gap-1">
+        <nav
+          className="hidden lg:flex w-52 shrink-0 flex-col gap-1"
+          role="tablist"
+          aria-label="Settings navigation"
+        >
           {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
+              id={`${item.id}-tab`}
               type="button"
+              role="tab"
+              aria-selected={activeTab === item.id}
+              aria-controls={`${item.id}-panel`}
               onClick={() => setActiveTab(item.id)}
               className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-left transition-all duration-200 ${
                 activeTab === item.id
@@ -579,18 +611,26 @@ export default function SettingsPage() {
                     : "text-[#6B6B6B] hover:bg-[var(--pluto-50)] hover:text-[var(--pluto-700)] hover:shadow-sm hover:scale-[1.01]"
               }`}
             >
-              <span className="shrink-0">{item.icon}</span>
+              <span className="shrink-0" aria-hidden="true">{item.icon}</span>
               {item.label}
             </button>
           ))}
         </nav>
 
         {/* Mobile tab bar */}
-        <div className="lg:hidden flex gap-1 overflow-x-auto rounded-xl border border-[#E8E8E8] bg-[#F5F5F5] p-1 w-full">
+        <div
+          className="lg:hidden flex gap-1 overflow-x-auto rounded-xl border border-[#E8E8E8] bg-[#F5F5F5] p-1 w-full"
+          role="tablist"
+          aria-label="Settings navigation"
+        >
           {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
+              id={`${item.id}-tab-mobile`}
               type="button"
+              role="tab"
+              aria-selected={activeTab === item.id}
+              aria-controls={`${item.id}-panel`}
               onClick={() => setActiveTab(item.id)}
               className={`shrink-0 rounded-lg px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-all duration-200 ${
                 activeTab === item.id
@@ -611,7 +651,13 @@ export default function SettingsPage() {
         <div className="flex-1 min-w-0">
           {/* API Keys Tab */}
           {activeTab === "api" && (
-            <div className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8">
+            <div
+              id="api-panel"
+              role="tabpanel"
+              aria-labelledby="api-tab"
+              tabIndex={0}
+              className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8"
+            >
               <div>
                 <h2 className="text-lg font-bold text-[#0A0A0A] mb-1">
                   API Authentication
@@ -623,7 +669,10 @@ export default function SettingsPage() {
 
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]">
+                  <label
+                    htmlFor="live-api-key"
+                    className="text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]"
+                  >
                     Live API Key
                   </label>
                   <button
@@ -636,6 +685,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex items-center gap-2 rounded-xl border border-[#E8E8E8] bg-[#F9F9F9] p-1 pl-4">
                   <code
+                    id="live-api-key"
                     className={`flex-1 truncate text-sm font-bold tracking-widest ${revealed ? "text-[#0A0A0A]" : "text-[#E8E8E8]"}`}
                   >
                     {displayKey}
@@ -710,7 +760,13 @@ export default function SettingsPage() {
 
           {/* Branding Tab */}
           {activeTab === "branding" && (
-            <div className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8">
+            <div
+              id="branding-panel"
+              role="tabpanel"
+              aria-labelledby="branding-tab"
+              tabIndex={0}
+              className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8"
+            >
               <div>
                 <h2 className="text-lg font-bold text-[#0A0A0A] mb-1">
                   Checkout Branding
@@ -800,13 +856,18 @@ export default function SettingsPage() {
                       onChange={(e) =>
                         updateBrandingField(field, e.target.value)
                       }
+                      aria-label={`${label} color picker`}
                       className="h-10 w-12 shrink-0 rounded-lg border border-[#E8E8E8] bg-white p-1 cursor-pointer"
                     />
                     <div className="flex flex-col gap-1 flex-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]">
+                      <label
+                        htmlFor={`color-text-${field}`}
+                        className="text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]"
+                      >
                         {label}
-                      </span>
+                      </label>
                       <input
+                        id={`color-text-${field}`}
                         type="text"
                         value={branding[field]}
                         onChange={(e) =>
@@ -863,7 +924,10 @@ export default function SettingsPage() {
                 </div>
               )}
               {lowContrastWarning && (
-                <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-700">
+                <div
+                  role="alert"
+                  className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-700"
+                >
                   Colors may not meet WCAG contrast targets. Consider adjusting.
                 </div>
               )}
@@ -891,7 +955,13 @@ export default function SettingsPage() {
 
           {/* Display Tab */}
           {activeTab === "display" && (
-            <div className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8">
+            <div
+              id="display-panel"
+              role="tabpanel"
+              aria-labelledby="display-tab"
+              tabIndex={0}
+              className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8"
+            >
               <div>
                 <h2 className="text-lg font-bold text-[#0A0A0A] mb-1">
                   Display Preferences
@@ -923,7 +993,13 @@ export default function SettingsPage() {
 
           {/* Webhooks Tab */}
           {activeTab === "webhooks" && (
-            <div className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8">
+            <div
+              id="webhooks-panel"
+              role="tabpanel"
+              aria-labelledby="webhooks-tab"
+              tabIndex={0}
+              className="rounded-2xl border border-[#E8E8E8] bg-white p-8 flex flex-col gap-8"
+            >
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-bold text-[#0A0A0A] mb-1">
@@ -952,16 +1028,17 @@ export default function SettingsPage() {
               )}
 
               <div className="flex flex-col gap-3">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]">
+                <label
+                  htmlFor="webhook-url"
+                  className="text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]"
+                >
                   Endpoint URL
                 </label>
                 <input
+                  id="webhook-url"
                   type="url"
                   value={webhookUrl}
-                  onChange={(e) => {
-                    setWebhookUrl(e.target.value);
-                    setWebhookUrlError(validateWebhookUrl(e.target.value));
-                  }}
+                  onChange={handleWebhookUrlChange}
                   placeholder="https://example.com/hooks/pluto"
                   className={`rounded-xl border bg-[#F9F9F9] px-4 py-3 font-mono text-sm text-[#0A0A0A] focus:outline-none focus:bg-white transition-all ${webhookUrlError ? "border-red-300 focus:border-red-500" : "border-[#E8E8E8] focus:border-[#0A0A0A]"}`}
                 />
@@ -1047,6 +1124,7 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => setWebhookRevealedSecret((v) => !v)}
+                      aria-label={webhookRevealedSecret ? "Hide webhook secret" : "Show webhook secret"}
                       className="p-1 text-[#6B6B6B] hover:text-[#0A0A0A]"
                     >
                       <EyeIcon open={webhookRevealedSecret} />
@@ -1106,7 +1184,13 @@ export default function SettingsPage() {
 
           {/* Danger Tab */}
           {activeTab === "danger" && (
-            <div className="rounded-2xl border border-red-200 bg-white p-8 flex flex-col gap-6">
+            <div
+              id="danger-panel"
+              role="tabpanel"
+              aria-labelledby="danger-tab"
+              tabIndex={0}
+              className="rounded-2xl border border-red-200 bg-white p-8 flex flex-col gap-6"
+            >
               <div>
                 <h2 className="text-lg font-bold text-red-600 mb-1">
                   Danger Zone
