@@ -26,7 +26,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { localeToLanguageTag } from "@/i18n/config";
-import MetricsSkeleton from "@/components/MetricsSkeleton";
 import DensityGrid from "@/components/DensityGrid";
 
 type TimeRange = "7D" | "30D" | "1Y";
@@ -268,6 +267,18 @@ export default function PaymentMetrics({
   const hydrated = useMerchantHydrated();
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
+  const handleExport = async (format: ExportFormat) => {
+    if (!chartContainerRef.current) return;
+    try {
+      setExporting(true);
+      await exportChart(chartContainerRef, format, `metrics-export-${new Date().getTime()}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("exportFailed"));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useHydrateMerchantStore();
 
   useEffect(() => {
@@ -343,7 +354,7 @@ export default function PaymentMetrics({
     });
   };
 
-  if (loading || !hydrated) {
+  if (showSkeleton || loading || !hydrated) {
     return (
       <div className="animate-pulse space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">

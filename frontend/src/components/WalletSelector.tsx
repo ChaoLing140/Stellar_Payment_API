@@ -153,60 +153,7 @@ export default function WalletSelector({ networkPassphrase, onConnected }: Walle
     }
   }, [networkPassphrase, onConnected, selectProvider, providers, t]);
 
-  const providerButtons = useMemo(() => {
-    return providers.map((p) => {
-      const isWc = p.id === "walletconnect";
-      const isConnecting = connecting === p.id;
-      const isInstalled = installed[p.id] ?? false;
-      const isDisabled = !isInstalled;
 
-      return (
-        <button
-          key={p.id}
-          type="button"
-          disabled={isDisabled || connecting !== null}
-          onClick={() => handleSelect(p.id)}
-          aria-busy={isConnecting}
-          className="group relative flex h-16 w-full items-center gap-4 rounded-2xl border border-[#E8E8E8] bg-white px-5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-[var(--pluto-400)] hover:shadow-[0_6px_22px_rgba(74,111,165,0.12)] active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {/* Icon */}
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E8E8E8] bg-[#F9F9F9] transition-colors duration-200 group-hover:border-[var(--pluto-200)] group-hover:bg-[var(--pluto-50)]">
-            {ICONS[p.id] ?? (
-              <svg className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-              </svg>
-            )}
-          </div>
-
-          {/* Label */}
-          <div className="flex flex-1 flex-col gap-0.5">
-            {isConnecting ? (
-              <span className="flex items-center gap-2 text-sm font-bold text-white">
-                <Spinner size="sm" />
-                {isWc ? t("walletConnectWaiting") : "Connecting…"}
-              </span>
-            ) : (
-              <>
-                <span className="text-sm font-bold text-white transition-colors group-hover:text-mint">{p.name}</span>
-                <span className="text-[10px] font-medium text-slate-500">
-                  {isDisabled
-                    ? (isWc ? t("noProjectId") : t("notInstalled"))
-                    : SUBTITLES[p.id] ?? t("tapToConnect")}
-                </span>
-              </>
-            )}
-          </div>
-
-          {/* Arrow */}
-          {!isConnecting && !isDisabled && (
-            <svg className="h-4 w-4 shrink-0 text-[#C0C0C0] transition-colors duration-200 group-hover:text-[var(--pluto-500)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          )}
-        </button>
-      );
-    });
-  }, [providers, connecting, installed, handleSelect, t]);
 
   if (activeProvider) return null;
 

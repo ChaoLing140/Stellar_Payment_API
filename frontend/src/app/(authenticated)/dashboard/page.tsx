@@ -1,17 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import AnalyticsCards from "@/components/AnalyticsCards";
-import ActivityFeed from "@/components/ActivityFeed";
+
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 import Link from "next/link";
 import {
   useMerchantHydrated,
   useHydrateMerchantStore,
   useMerchantApiKey,
-  useMerchantMetadata,
 } from "@/lib/merchant-store";
-import { useTranslations } from "next-intl";
 import FirstApiKeyModal from "@/components/FirstApiKeyModal";
 import PaymentMetrics from "@/components/PaymentMetrics";
 import RecentPayments from "@/components/RecentPayments";
@@ -19,12 +16,10 @@ import WithdrawModal from "@/components/WithdrawModal";
 import FirstPaymentCelebration from "@/components/FirstPaymentCelebration";
 
 export default function DashboardPage() {
-  const t = useTranslations("dashboardPage");
   const [isFirstKeyModalOpen, setIsFirstKeyModalOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const hydrated = useMerchantHydrated();
   const apiKey = useMerchantApiKey();
-  const merchant = useMerchantMetadata();
   const [loading, setLoading] = useState(true);
 
   useHydrateMerchantStore();
@@ -138,7 +133,7 @@ export default function DashboardPage() {
 
       <FirstApiKeyModal isOpen={isFirstKeyModalOpen} onClose={() => setIsFirstKeyModalOpen(false)} />
       <FirstPaymentCelebration />
-      <WithdrawalModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
+      <WithdrawModal isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
     </div>
   );
 }
