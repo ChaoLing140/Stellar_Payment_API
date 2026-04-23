@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, memo } from "react";
 import Link from "next/link";
 import { useLocale } from "next-intl";
 import {
@@ -20,6 +20,71 @@ interface Payment {
   description: string | null;
   created_at: string;
 }
+
+const SKELETON_ITEMS = [0, 1, 2];
+
+interface PaymentRowProps {
+  payment: Payment;
+  index: number;
+  locale: string;
+  hideCents: boolean;
+}
+
+const PaymentRow = memo(function PaymentRow({
+  payment,
+  index,
+  locale,
+  hideCents,
+}: PaymentRowProps) {
+  const formattedDate = useMemo(
+    () => new Date(payment.created_at).toLocaleDateString(),
+    [payment.created_at],
+  );
+  const formattedAmount = useMemo(
+    () => formatAmount(payment.amount, locale, hideCents),
+    [payment.amount, locale, hideCents],
+  );
+  const rowClassName = `group transition-all 150ms ease cursor-default hover:bg-[#F0F0F0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4a6fa5] ${index % 2 === 0 ? "bg-white" : "bg-[#F9F9F9]"}`;
+  const statusClassName = `inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight ${
+    payment.status === "confirmed"
+      ? "bg-[#0A0A0A] text-white"
+      : payment.status === "pending"
+        ? "bg-[#F5F5F5] text-[#6B6B6B] border border-[#E8E8E8]"
+        : "bg-red-50 text-red-600 border border-red-100"
+  }`;
+  return (
+    <tr
+      role="row"
+      tabIndex={0}
+      className={rowClassName}
+      aria-label={`Payment ${payment.description || "Transaction"} for ${formattedAmount} ${payment.asset}`}
+    >
+      <td className="px-6 py-4">
+        <div className={statusClassName} aria-label={`Status: ${payment.status}`}>
+          {payment.status}
+        </div>
+      </td>
+      <td className="px-6 py-4">
+        <p className="text-sm font-semibold text-[#0A0A0A] truncate max-w-[200px]">
+          {payment.description || "Transaction"}
+        </p>
+      </td>
+      <td className="px-6 py-4">
+        <time
+          className="text-[11px] font-medium text-[#6B6B6B]"
+          dateTime={payment.created_at}
+        >
+          {formattedDate}
+        </time>
+      </td>
+      <td className="px-6 py-4 text-right">
+        <p className="text-sm font-bold text-[#0A0A0A]">
+          {formattedAmount} {payment.asset}
+        </p>
+      </td>
+    </tr>
+  );
+});
 
 export default function ActivityFeed() {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -120,7 +185,7 @@ export default function ActivityFeed() {
   if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
-        {[...Array(3)].map((_, i) => (
+        {SKELETON_ITEMS.map((i) => (
           <div key={i} className="h-16 w-full rounded-lg bg-[#F5F5F5]" />
         ))}
       </div>
@@ -184,47 +249,13 @@ export default function ActivityFeed() {
           </thead>
           <tbody className="divide-y divide-[#E8E8E8]">
             {payments.map((payment, i) => (
-              <tr
+              <PaymentRow
                 key={payment.id}
-                role="row"
-                tabIndex={0}
-                className={`group transition-all 150ms ease cursor-default hover:bg-[#F0F0F0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4a6fa5] ${i % 2 === 0 ? "bg-white" : "bg-[#F9F9F9]"}`}
-                aria-label={`Payment ${payment.description || "Transaction"} for ${formatAmount(payment.amount, locale, hideCents)} ${payment.asset}`}
-              >
-                <td className="px-6 py-4">
-                  <div
-                    className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight ${
-                      payment.status === "confirmed"
-                        ? "bg-[#0A0A0A] text-white"
-                        : payment.status === "pending"
-                          ? "bg-[#F5F5F5] text-[#6B6B6B] border border-[#E8E8E8]"
-                          : "bg-red-50 text-red-600 border border-red-100"
-                    }`}
-                    aria-label={`Status: ${payment.status}`}
-                  >
-                    {payment.status}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <p className="text-sm font-semibold text-[#0A0A0A] truncate max-w-[200px]">
-                    {payment.description || "Transaction"}
-                  </p>
-                </td>
-                <td className="px-6 py-4">
-                  <time
-                    className="text-[11px] font-medium text-[#6B6B6B]"
-                    dateTime={payment.created_at}
-                  >
-                    {new Date(payment.created_at).toLocaleDateString()}
-                  </time>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <p className="text-sm font-bold text-[#0A0A0A]">
-                    {formatAmount(payment.amount, locale, hideCents)}{" "}
-                    {payment.asset}
-                  </p>
-                </td>
-              </tr>
+                payment={payment}
+                index={i}
+                locale={locale}
+                hideCents={hideCents}
+              />
             ))}
           </tbody>
         </table>
